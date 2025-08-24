@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>TiszaToTajmetriaDialogBase</class>
+ <widget class="QDialog" name="TiszaToTajmetriaDialogBase">
+  <property name="enabled">
+   <bool>true</bool>
+  </property>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>541</width>
+    <height>138</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Lake Tisza landscape calculator</string>
+  </property>
+  <widget class="QSplitter" name="splitter_3">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>10</y>
+     <width>381</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Horizontal</enum>
+   </property>
+   <widget class="QSplitter" name="splitter">
+    <property name="orientation">
+     <enum>Qt::Vertical</enum>
+    </property>
+    <widget class="QLabel" name="label">
+     <property name="text">
+      <string>Please select a layer</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="label_2">
+     <property name="text">
+      <string>Please select a landscape metric indicator</string>
+     </property>
+    </widget>
+   </widget>
+   <widget class="QSplitter" name="splitter_2">
+    <property name="orientation">
+     <enum>Qt::Vertical</enum>
+    </property>
+    <widget class="QComboBox" name="layerSelector"/>
+    <widget class="QComboBox" name="matricSelector">
+     <item>
+      <property name="text">
+       <string>All</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Effective Meshsize</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Euclidean</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Fractal Dimension Index</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Greatest patch area</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Landscape division</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Landscape Proportion</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Land cover</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Mean patch area</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Median patch area</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Nearest-Neighbor Distance</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Number of Patches</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Patch cohesion index</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Patch density</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Smallest patch area</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Splitting Index</string>
+      </property>
+     </item>
+    </widget>
+   </widget>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
