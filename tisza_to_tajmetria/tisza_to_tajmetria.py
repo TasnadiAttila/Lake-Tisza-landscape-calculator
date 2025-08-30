@@ -30,26 +30,21 @@ from qgis.core import Qgis
 from .resources import *
 # Import the code for the dialog
 from .tisza_to_tajmetria_dialog import TiszaToTajmetriaDialog
-# Import ComboBox handler
+# Import helpers
 from .Helper import ComboBoxHandler
+from .Helper import ExcelHelper
+from .Helper import LandscapeMetricCalculator
 import os.path
-
+import xlsxwriter
 
 class TiszaToTajmetria:
     """QGIS Plugin Implementation."""
 
     def __init__(self, iface):
-        """Constructor.
-
-        :param iface: An interface instance that will be passed to this class
-            which provides the hook by which you can manipulate the QGIS
-            application at run time.
-        :type iface: QgsInterface
-        """
-        # Save reference to the QGIS interface
+        """Constructor."""
         self.iface = iface
-        # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
+
         # initialize locale
         locale = QSettings().value('locale/userLocale')[0:2]
         locale_path = os.path.join(
@@ -62,29 +57,14 @@ class TiszaToTajmetria:
             self.translator.load(locale_path)
             QCoreApplication.installTranslator(self.translator)
 
-        # Declare instance attributes
         self.actions = []
         self.menu = self.tr(u'&Tiszta To Tajmetria')
-
-        # Check if plugin was started the first time in current QGIS session
-        # Must be set in initGui() to survive plugin reloads
         self.first_start = None
+        self.dlg = None
 
-    # noinspection PyMethodMayBeStatic
     def tr(self, message):
-        """Get the translation for a string using Qt translation API.
-
-        We implement this ourselves since we do not inherit QObject.
-
-        :param message: String for translation.
-        :type message: str, QString
-
-        :returns: Translated version of message.
-        :rtype: QString
-        """
-        # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
+        """Get translation."""
         return QCoreApplication.translate('TiszaToTajmetria', message)
-
 
     def add_action(
         self,
@@ -97,44 +77,6 @@ class TiszaToTajmetria:
         status_tip=None,
         whats_this=None,
         parent=None):
-        """Add a toolbar icon to the toolbar.
-
-        :param icon_path: Path to the icon for this action. Can be a resource
-            path (e.g. ':/plugins/foo/bar.png') or a normal file system path.
-        :type icon_path: str
-
-        :param text: Text that should be shown in menu items for this action.
-        :type text: str
-
-        :param callback: Function to be called when the action is triggered.
-        :type callback: function
-
-        :param enabled_flag: A flag indicating if the action should be enabled
-            by default. Defaults to True.
-        :type enabled_flag: bool
-
-        :param add_to_menu: Flag indicating whether the action should also
-            be added to the menu. Defaults to True.
-        :type add_to_menu: bool
-
-        :param add_to_toolbar: Flag indicating whether the action should also
-            be added to the toolbar. Defaults to True.
-        :type add_to_toolbar: bool
-
-        :param status_tip: Optional text to show in a popup when mouse pointer
-            hovers over the action.
-        :type status_tip: str
-
-        :param parent: Parent widget for the new action. Defaults None.
-        :type parent: QWidget
-
-        :param whats_this: Optional text to show in the status bar when the
-            mouse pointer hovers over the action.
-
-        :returns: The action that was created. Note that the action is also
-            added to self.actions list.
-        :rtype: QAction
-        """
 
         icon = QIcon(icon_path)
         action = QAction(icon, text, parent)
@@ -143,87 +85,88 @@ class TiszaToTajmetria:
 
         if status_tip is not None:
             action.setStatusTip(status_tip)
-
         if whats_this is not None:
             action.setWhatsThis(whats_this)
 
         if add_to_toolbar:
-            # Adds plugin icon to Plugins toolbar
             self.iface.addToolBarIcon(action)
-
         if add_to_menu:
-            self.iface.addPluginToMenu(
-                self.menu,
-                action)
+            self.iface.addPluginToMenu(self.menu, action)
 
         self.actions.append(action)
-
         return action
 
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
-
         icon_path = ':/plugins/tisza_to_tajmetria/icon.png'
         self.add_action(
             icon_path,
             text=self.tr(u'Calculate mosaicity'),
             callback=self.run,
             parent=self.iface.mainWindow())
-
-        # will be set False in run()
         self.first_start = True
 
-
     def unload(self):
-        """Removes the plugin menu item and icon from QGIS GUI."""
+        """Remove the plugin menu item and icon."""
         for action in self.actions:
-            self.iface.removePluginMenu(
-                self.tr(u'&Tiszta To Tajmetria'),
-                action)
+            self.iface.removePluginMenu(self.tr(u'&Tiszta To Tajmetria'), action)
             self.iface.removeToolBarIcon(action)
 
     def load_layers_to_combobox(self):
-        """Load layers to combobox using the handler"""
-        if not hasattr(self, 'dlg') or self.dlg is None:
+        """Load layers into combobox."""
+        if not self.dlg:
             return
-            
         ComboBoxHandler.load_layers_to_combobox(self.dlg.layerSelector, ['raster', 'vector'])
 
     def run(self):
-        """Run method that performs all the real work"""
 
-        # Create the dialog with elements (after translation) and keep reference
-        # Only create GUI ONCE in callback, so that it will only load when the plugin is started
-        if self.first_start == True:
+        ExcelHelper.ensure_xlsxwriter_installed(self)
+
+        """Run method that performs all the real work."""
+        if self.first_start:
             self.first_start = False
             self.dlg = TiszaToTajmetriaDialog()
+            self.dlg.calculateButton.clicked.connect(self.on_calculate_clicked)
+            self.dlg.saveFileDialog.setFilter("Excel files (*.xlsx);")
 
+        self.dlg.saveFileDialog.setFilePath("")
         self.load_layers_to_combobox()
-        
-        # Add clear buttons and search functionality to comboboxes
         ComboBoxHandler.add_clear_button_to_combobox(self.dlg.layerSelector)
         ComboBoxHandler.add_clear_button_to_combobox(self.dlg.matricSelector)
 
-        # show the dialog
         self.dlg.show()
-        # Run the dialog event loop
-        result = self.dlg.exec_()
-        # See if OK was pressed
-        if result:
-            selected_index = self.dlg.layerSelector.currentIndex()
-            selected_layer = self.dlg.layerSelector.itemData(selected_index)
-            
-            if selected_layer and hasattr(selected_layer, 'name'):
-                self.iface.messageBar().pushMessage(
-                    "Sikeres", 
-                    f"A kiválasztott réteg: {selected_layer.name()}", 
-                    level=Qgis.Success, 
-                    duration=3
-                )
-            else:
-                self.iface.messageBar().pushMessage(
-                    "Hiba", 
-                    "Nincs érvényes réteg kiválasztva", 
-                    level=Qgis.Warning, 
-                    duration=3
-                )
+        self.dlg.exec_()
+
+
+    def on_calculate_clicked(self):
+        output_path = self.dlg.saveFileDialog.filePath()
+
+        selected_index = self.dlg.layerSelector.currentIndex()
+        selected_layer = self.dlg.layerSelector.itemData(selected_index)
+
+        self.iface.messageBar().pushMessage(
+            "Info",
+            f"Effective Mesh Size: {LandscapeMetricCalculator.calculateEffectiveMeshSize(selected_layer):.2f} km²",
+            level=0, duration=10
+        )
+
+        # if not output_path:
+        #     self.iface.messageBar().pushMessage(
+        #         "Error",
+        #         "No save file selected.!",
+        #         level=Qgis.Warning,
+        #         duration=3
+        #     )
+        #     return
+        #
+        #
+        #
+        # ExcelHelper.createOutputExcelFile(output_path)
+        #
+        # self.iface.messageBar().pushMessage(
+        #     "Success",
+        #     f"Excel is created successfully: {output_path}",
+        #     level=Qgis.Success,
+        #     duration=3
+        # )
+

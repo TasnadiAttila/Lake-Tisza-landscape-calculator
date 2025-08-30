@@ -16,123 +16,166 @@
   <property name="windowTitle">
    <string>Lake Tisza landscape calculator</string>
   </property>
-  <widget class="QSplitter" name="splitter_3">
+  <widget class="QPushButton" name="calculateButton">
    <property name="geometry">
     <rect>
-     <x>20</x>
-     <y>10</y>
-     <width>381</width>
-     <height>40</height>
+     <x>230</x>
+     <y>90</y>
+     <width>75</width>
+     <height>23</height>
     </rect>
    </property>
-   <property name="orientation">
-    <enum>Qt::Horizontal</enum>
+   <property name="text">
+    <string>Calculate</string>
    </property>
-   <widget class="QSplitter" name="splitter">
-    <property name="orientation">
-     <enum>Qt::Vertical</enum>
+  </widget>
+  <widget class="QgsFileWidget" name="saveFileDialog">
+   <property name="geometry">
+    <rect>
+     <x>360</x>
+     <y>80</y>
+     <width>90</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="storageMode">
+    <enum>QgsFileWidget::SaveFile</enum>
+   </property>
+  </widget>
+  <widget class="QComboBox" name="layerSelector">
+   <property name="geometry">
+    <rect>
+     <x>300</x>
+     <y>8</y>
+     <width>155</width>
+     <height>17</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QComboBox" name="matricSelector">
+   <property name="geometry">
+    <rect>
+     <x>300</x>
+     <y>30</y>
+     <width>155</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>All</string>
     </property>
-    <widget class="QLabel" name="label">
-     <property name="text">
-      <string>Please select a layer</string>
-     </property>
-    </widget>
-    <widget class="QLabel" name="label_2">
-     <property name="text">
-      <string>Please select a landscape metric indicator</string>
-     </property>
-    </widget>
-   </widget>
-   <widget class="QSplitter" name="splitter_2">
-    <property name="orientation">
-     <enum>Qt::Vertical</enum>
+   </item>
+   <item>
+    <property name="text">
+     <string>Effective Meshsize</string>
     </property>
-    <widget class="QComboBox" name="layerSelector"/>
-    <widget class="QComboBox" name="matricSelector">
-     <item>
-      <property name="text">
-       <string>All</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Effective Meshsize</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Euclidean</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Fractal Dimension Index</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Greatest patch area</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Landscape division</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Landscape Proportion</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Land cover</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Mean patch area</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Median patch area</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Nearest-Neighbor Distance</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Number of Patches</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Patch cohesion index</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Patch density</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Smallest patch area</string>
-      </property>
-     </item>
-     <item>
-      <property name="text">
-       <string>Splitting Index</string>
-      </property>
-     </item>
-    </widget>
-   </widget>
+   </item>
+   <item>
+    <property name="text">
+     <string>Euclidean</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Fractal Dimension Index</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Greatest patch area</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Landscape division</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Landscape Proportion</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Land cover</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Mean patch area</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Median patch area</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Nearest-Neighbor Distance</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Number of Patches</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Patch cohesion index</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Patch density</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Smallest patch area</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Splitting Index</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QLabel" name="label_2">
+   <property name="geometry">
+    <rect>
+     <x>90</x>
+     <y>32</y>
+     <width>201</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Please select a landscape metric indicator</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label">
+   <property name="geometry">
+    <rect>
+     <x>90</x>
+     <y>9</y>
+     <width>98</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Please select a layer</string>
+   </property>
   </widget>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>QgsFileWidget</class>
+   <extends>QWidget</extends>
+   <header>qgsfilewidget.h</header>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>
