@@ -1,6 +1,7 @@
+from abc import ABC
 from .IMetricsCalculator import IMetricsCalculator
 
-class EffectiveMeshSize(IMetricsCalculator):
+class EffectiveMeshSize(IMetricsCalculator, ABC):
     """Calculate effective mesh size in square kilometers"""
     name = "Effective Mesh Size"
 

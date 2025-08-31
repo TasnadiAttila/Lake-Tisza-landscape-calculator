@@ -9,18 +9,39 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>608</width>
-    <height>325</height>
+    <width>600</width>
+    <height>200</height>
    </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>600</width>
+    <height>200</height>
+   </size>
+  </property>
+  <property name="maximumSize">
+   <size>
+    <width>600</width>
+    <height>200</height>
+   </size>
   </property>
   <property name="windowTitle">
    <string>Lake Tisza landscape calculator</string>
+  </property>
+  <property name="sizeGripEnabled">
+   <bool>false</bool>
   </property>
   <widget class="QComboBox" name="layerSelector">
    <property name="geometry">
     <rect>
      <x>300</x>
-     <y>8</y>
+     <y>49</y>
      <width>155</width>
      <height>17</height>
     </rect>
@@ -30,7 +51,7 @@
    <property name="geometry">
     <rect>
      <x>300</x>
-     <y>30</y>
+     <y>71</y>
      <width>155</width>
      <height>17</height>
     </rect>
@@ -40,7 +61,7 @@
    <property name="geometry">
     <rect>
      <x>90</x>
-     <y>32</y>
+     <y>73</y>
      <width>201</width>
      <height>17</height>
     </rect>
@@ -53,7 +74,7 @@
    <property name="geometry">
     <rect>
      <x>90</x>
-     <y>9</y>
+     <y>50</y>
      <width>98</width>
      <height>16</height>
     </rect>
@@ -66,7 +87,7 @@
    <property name="geometry">
     <rect>
      <x>90</x>
-     <y>70</y>
+     <y>111</y>
      <width>350</width>
      <height>23</height>
     </rect>

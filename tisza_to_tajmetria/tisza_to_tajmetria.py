@@ -142,7 +142,7 @@ class TiszaToTajmetria:
         selected_metric = self.dlg.metricSelector.itemData(selected_metric_index)
         self.iface.messageBar().pushMessage(
             "Info",
-            f"Effective Mesh Size: {selected_metric(selected_layer):.2f} km²",
+            f"{self.dlg.metricSelector.currentText()} {selected_metric(selected_layer):.2f} km²",
             level=0, duration=10
         )
 

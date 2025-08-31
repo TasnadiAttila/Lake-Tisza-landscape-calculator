@@ -1,6 +1,7 @@
 from qgis.core import QgsProject
 
-from tisza_to_tajmetria.Metrics.EffectiveMeshSize import EffectiveMeshSize
+from tisza_to_tajmetria.Metrics.Metrics import Metrics
+
 
 class ComboBoxHandler:
 
@@ -38,5 +39,7 @@ class ComboBoxHandler:
     def loadMetricsToCombobox(combobox):
         """Load metrics to combobox with optional type filtering"""
         combobox.clear()
-        combobox.addItem(EffectiveMeshSize.name, EffectiveMeshSize.calculateMetric)
+        for metric in Metrics:
+            combobox.addItem(metric.getMetricName, metric.getMetricCalculation())
+
         return combobox
