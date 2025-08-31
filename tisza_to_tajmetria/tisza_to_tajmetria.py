@@ -31,11 +31,10 @@ from .resources import *
 # Import the code for the dialog
 from .tisza_to_tajmetria_dialog import TiszaToTajmetriaDialog
 # Import helpers
-from .Helper import ComboBoxHandler
-from .Helper import ExcelHelper
-from .Helper import LandscapeMetricCalculator
+from .Controllers.ComboBoxHandler import ComboBoxHandler
+from .Controllers.ExcelHelper import ExcelHelper
 import os.path
-import xlsxwriter
+
 
 class TiszaToTajmetria:
     """QGIS Plugin Implementation."""
@@ -112,15 +111,8 @@ class TiszaToTajmetria:
             self.iface.removePluginMenu(self.tr(u'&Tiszta To Tajmetria'), action)
             self.iface.removeToolBarIcon(action)
 
-    def load_layers_to_combobox(self):
-        """Load layers into combobox."""
-        if not self.dlg:
-            return
-        ComboBoxHandler.load_layers_to_combobox(self.dlg.layerSelector, ['raster', 'vector'])
-
     def run(self):
-
-        ExcelHelper.ensure_xlsxwriter_installed(self)
+        ExcelHelper.ensureXlsxwriterInstalled(self)
 
         """Run method that performs all the real work."""
         if self.first_start:
@@ -130,9 +122,11 @@ class TiszaToTajmetria:
             self.dlg.saveFileDialog.setFilter("Excel files (*.xlsx);")
 
         self.dlg.saveFileDialog.setFilePath("")
-        self.load_layers_to_combobox()
-        ComboBoxHandler.add_clear_button_to_combobox(self.dlg.layerSelector)
-        ComboBoxHandler.add_clear_button_to_combobox(self.dlg.matricSelector)
+        ComboBoxHandler.loadLayersToCombobox(self.dlg.layerSelector, ['raster', 'vector'])
+        ComboBoxHandler.loadMetricsToCombobox(self.dlg.metricSelector)
+
+        ComboBoxHandler.addClearButtonToCombobox(self.dlg.layerSelector)
+        ComboBoxHandler.addClearButtonToCombobox(self.dlg.metricSelector)
 
         self.dlg.show()
         self.dlg.exec_()
@@ -144,9 +138,11 @@ class TiszaToTajmetria:
         selected_index = self.dlg.layerSelector.currentIndex()
         selected_layer = self.dlg.layerSelector.itemData(selected_index)
 
+        selected_metric_index = self.dlg.metricSelector.currentIndex()
+        selected_metric = self.dlg.metricSelector.itemData(selected_metric_index)
         self.iface.messageBar().pushMessage(
             "Info",
-            f"Effective Mesh Size: {LandscapeMetricCalculator.calculateEffectiveMeshSize(selected_layer):.2f} km²",
+            f"Effective Mesh Size: {selected_metric(selected_layer):.2f} km²",
             level=0, duration=10
         )
 
