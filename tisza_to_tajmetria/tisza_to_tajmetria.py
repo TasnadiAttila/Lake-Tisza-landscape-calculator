@@ -118,51 +118,51 @@ class TiszaToTajmetria:
         if self.first_start:
             self.first_start = False
             self.dlg = TiszaToTajmetriaDialog()
-            self.dlg.calculateButton.clicked.connect(self.on_calculate_clicked)
+            self.dlg.calculateButton.clicked.connect(self.onCalculateClicked)
             self.dlg.saveFileDialog.setFilter("Excel files (*.xlsx);")
+
+        ComboBoxHandler.addClearButtonToCombobox(self.dlg.layerSelector)
+        ComboBoxHandler.addClearButtonToCombobox(self.dlg.metricSelector)
 
         self.dlg.saveFileDialog.setFilePath("")
         ComboBoxHandler.loadLayersToCombobox(self.dlg.layerSelector, ['raster', 'vector'])
         ComboBoxHandler.loadMetricsToCombobox(self.dlg.metricSelector)
 
-        ComboBoxHandler.addClearButtonToCombobox(self.dlg.layerSelector)
-        ComboBoxHandler.addClearButtonToCombobox(self.dlg.metricSelector)
 
         self.dlg.show()
         self.dlg.exec_()
 
-
-    def on_calculate_clicked(self):
+    def onCalculateClicked(self):
         output_path = self.dlg.saveFileDialog.filePath()
 
-        selected_index = self.dlg.layerSelector.currentIndex()
-        selected_layer = self.dlg.layerSelector.itemData(selected_index)
+        selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
+        if not selected_layers:
+            self.iface.messageBar().pushMessage(
+                "Error",
+                "No layer selected!",
+                level=Qgis.Warning,
+                duration=3
+            )
+            return
 
-        selected_metric_index = self.dlg.metricSelector.currentIndex()
-        selected_metric = self.dlg.metricSelector.itemData(selected_metric_index)
-        self.iface.messageBar().pushMessage(
-            "Info",
-            f"{self.dlg.metricSelector.currentText()} {selected_metric(selected_layer):.2f} km²",
-            level=0, duration=10
-        )
+        selected_metrics = ComboBoxHandler.getCheckedItems(self.dlg.metricSelector)
+        if not selected_metrics:
+            self.iface.messageBar().pushMessage(
+                "Error",
+                "No metric selected!",
+                level=Qgis.Warning,
+                duration=3
+            )
+            return
 
-        # if not output_path:
-        #     self.iface.messageBar().pushMessage(
-        #         "Error",
-        #         "No save file selected.!",
-        #         level=Qgis.Warning,
-        #         duration=3
-        #     )
-        #     return
-        #
-        #
-        #
-        # ExcelHelper.createOutputExcelFile(output_path)
-        #
-        # self.iface.messageBar().pushMessage(
-        #     "Success",
-        #     f"Excel is created successfully: {output_path}",
-        #     level=Qgis.Success,
-        #     duration=3
-        # )
+        for layer in selected_layers:
+            for metric_func, metric_name in selected_metrics:
+                value = metric_func(layer)
+                self.iface.messageBar().pushMessage(
+                    "Info",
+                    f"{layer.name()} - {metric_name}: {value:.2f} km²",
+                    level=0,
+                    duration=10
+                )
+
 
