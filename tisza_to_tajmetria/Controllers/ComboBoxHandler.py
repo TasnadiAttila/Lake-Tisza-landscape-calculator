@@ -85,17 +85,19 @@ class ComboBoxHandler:
     @staticmethod
     def keepPopupOpen(combobox):
         view = combobox.view()
-        original_mouseReleaseEvent = view.mouseReleaseEvent
+        view._original_mouseReleaseEvent = view.mouseReleaseEvent
+        view.mouseReleaseEvent = lambda event: ComboBoxHandler.handleMouseReleaseEvent(combobox, event)
 
-        def newMouseReleaseEvent(event):
-            index = view.indexAt(event.pos())
-            if index.isValid():
-                item = combobox.model().itemFromIndex(index)
-                if item.checkState() == Qt.Checked:
-                    item.setCheckState(Qt.Unchecked)
-                else:
-                    item.setCheckState(Qt.Checked)
+    @staticmethod
+    def handleMouseReleaseEvent(combobox, event):
+        view = combobox.view()
+        index = view.indexAt(event.pos())
+
+        if index.isValid():
+            item = combobox.model().itemFromIndex(index)
+            if item.checkState() == Qt.Checked:
+                item.setCheckState(Qt.Unchecked)
             else:
-                original_mouseReleaseEvent(event)
-
-        view.mouseReleaseEvent = newMouseReleaseEvent
+                item.setCheckState(Qt.Checked)
+        else:
+            view._original_mouseReleaseEvent(event)

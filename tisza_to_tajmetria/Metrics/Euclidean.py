@@ -4,7 +4,7 @@ import numpy as np
 
 class Euclidean(IMetricsCalculator, ABC):
     """Calculate average Euclidean distance between patch centroids in raster"""
-    name = "Euclidean"
+    name = "Euclidean Nearest Neighbour"
 
     @staticmethod
     def calculateMetric(layer):
