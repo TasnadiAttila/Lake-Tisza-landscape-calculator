@@ -1,7 +1,6 @@
 from qgis.core import QgsProject
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
-
 from tisza_to_tajmetria.Metrics.Metrics import Metrics
 
 
@@ -10,8 +9,39 @@ class ComboBoxHandler:
     @staticmethod
     def addClearButtonToCombobox(combobox):
         combobox.setEditable(True)
+        combobox.setInsertPolicy(combobox.NoInsert)
+        combobox.setCurrentIndex(-1)
         combobox.lineEdit().setClearButtonEnabled(True)
         combobox.lineEdit().setPlaceholderText("Search...")
+
+        combobox.lineEdit().textChanged.connect(
+            lambda text: ComboBoxHandler.textChangeOnSearch(combobox, text)
+        )
+        combobox._popup_opened = False
+
+    @staticmethod
+    def textChangeOnSearch(combobox, text):
+        ComboBoxHandler.filterCombobox(combobox, text)
+
+        if not combobox._popup_opened:
+            combobox.showPopup()
+            combobox._popup_opened = True
+
+        combobox.lineEdit().setFocus()
+
+    @staticmethod
+    def filterCombobox(combobox, text):
+        model = combobox.model()
+        text = text.lower().strip()
+
+        for i in range(model.rowCount()):
+            item = model.item(i)
+            if item.text() == "No available layers":
+                combobox.view().setRowHidden(i, False)
+                continue
+
+            is_match = text in item.text().lower()
+            combobox.view().setRowHidden(i, not is_match)
 
     @staticmethod
     def loadLayersToCombobox(combobox, layer_types=None):
@@ -24,7 +54,7 @@ class ComboBoxHandler:
 
         for layer in layers:
             if ('raster' in layer_types and layer.type() == layer.RasterLayer) or \
-                    ('vector' in layer_types and layer.type() == layer.VectorLayer):
+               ('vector' in layer_types and layer.type() == layer.VectorLayer):
                 item = QStandardItem(layer.name())
                 item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                 item.setData(Qt.Unchecked, Qt.CheckStateRole)
@@ -72,6 +102,10 @@ class ComboBoxHandler:
         else:
             item.setCheckState(Qt.Checked)
 
+        combobox.lineEdit().clear()
+        combobox.setCurrentIndex(-1)
+        combobox._popup_opened = False
+
     @staticmethod
     def getCheckedItems(combobox):
         checkItems = []
@@ -94,10 +128,6 @@ class ComboBoxHandler:
         index = view.indexAt(event.pos())
 
         if index.isValid():
-            item = combobox.model().itemFromIndex(index)
-            if item.checkState() == Qt.Checked:
-                item.setCheckState(Qt.Unchecked)
-            else:
-                item.setCheckState(Qt.Checked)
+            ComboBoxHandler.toggleMetricCheckbox(index, combobox)
         else:
             view._original_mouseReleaseEvent(event)

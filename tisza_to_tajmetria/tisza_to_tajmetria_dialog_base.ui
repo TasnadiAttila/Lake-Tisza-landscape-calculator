@@ -46,6 +46,9 @@
      <height>17</height>
     </rect>
    </property>
+   <property name="insertPolicy">
+    <enum>QComboBox::NoInsert</enum>
+   </property>
   </widget>
   <widget class="QLabel" name="label_2">
    <property name="geometry">
@@ -109,6 +112,9 @@
      <width>151</width>
      <height>21</height>
     </rect>
+   </property>
+   <property name="insertPolicy">
+    <enum>QComboBox::NoInsert</enum>
    </property>
   </widget>
  </widget>
