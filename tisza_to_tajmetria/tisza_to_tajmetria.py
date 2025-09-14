@@ -122,8 +122,8 @@ class TiszaToTajmetria:
             self.dlg.calculateButton.clicked.connect(self.onCalculateClicked)
             self.dlg.saveFileDialog.setFilter("Excel files (*.xlsx);")
 
-        ComboBoxHandler.addClearButtonToCombobox(self.dlg.layerSelector)
-        ComboBoxHandler.addClearButtonToCombobox(self.dlg.metricSelector)
+        ComboBoxHandler.makeComboboxEditable(self.dlg.layerSelector)
+        ComboBoxHandler.makeComboboxEditable(self.dlg.metricSelector)
 
         self.dlg.saveFileDialog.setFilePath("")
         ComboBoxHandler.loadLayersToCombobox(self.dlg.layerSelector, ['raster'])

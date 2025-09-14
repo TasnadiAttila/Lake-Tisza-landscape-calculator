@@ -1,16 +1,17 @@
 from qgis.core import QgsProject
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
+from PyQt5 import QtWidgets
+
 
 from tisza_to_tajmetria.Metrics.Metrics import Metrics
 
 
 class ComboBoxHandler:
     @staticmethod
-    def addClearButtonToCombobox(combobox):
+    def makeComboboxEditable(combobox):
         combobox.setEditable(True)
         combobox.lineEdit().setPlaceholderText("Searching...")
-        combobox.lineEdit().setCursorPosition(0)
 
     @staticmethod
     def loadLayersToCombobox(combobox, layer_types=None):
