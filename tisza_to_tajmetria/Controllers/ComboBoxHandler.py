@@ -19,13 +19,15 @@ class ComboBoxHandler:
 
     @staticmethod
     def textChangeOnSearch(combobox, text):
-        ComboBoxHandler.filterCombobox(combobox, text)
+        # Csak akkor filter, ha ténylegesen a felhasználó ír valamit
+        if text != combobox.lineEdit().text():  # így a lineEdit frissítése nem indít filtert
+            ComboBoxHandler.filterCombobox(combobox, text)
 
-        if not combobox._popup_opened:
-            combobox.showPopup()
-            combobox._popup_opened = True
+            if not combobox._popup_opened:
+                combobox.showPopup()
+                combobox._popup_opened = True
 
-        combobox.lineEdit().setFocus()
+            combobox.lineEdit().setFocus()
 
     @staticmethod
     def filterCombobox(combobox, text):
@@ -96,34 +98,68 @@ class ComboBoxHandler:
 
     @staticmethod
     def toggleMetricCheckbox(index, combobox):
-        """Checkbox állapot váltása a listában."""
+        """Checkbox állapot váltása a listában és lineEdit frissítése."""
         item = combobox.model().itemFromIndex(index)
+        if item is None:
+            return
+
+        # Állapot váltása
         if item.checkState() == Qt.Checked:
             item.setCheckState(Qt.Unchecked)
         else:
             item.setCheckState(Qt.Checked)
 
-        combobox.lineEdit().clear()
-        combobox.setCurrentIndex(-1)
-        combobox._popup_opened = False
-
-    @staticmethod
-    def getCheckedItems(combobox):
-        """Visszaadja a kiválasztott checkbox elemeket."""
+        # Frissítjük a lineEdit-et a kiválasztott elemek neveivel
         checked_items = []
         model = combobox.model()
         for i in range(model.rowCount()):
+            row_item = model.item(i)
+            if row_item.checkState() == Qt.Checked:
+                checked_items.append(row_item.text())
+
+        combobox.lineEdit().setText(", ".join(checked_items))
+
+    @staticmethod
+    def getCheckedItems(combobox):
+        """Visszaadja a kiválasztott checkbox elemek UserRole értékét."""
+        checked_items = []
+        model = combobox.model()
+        if model is None:
+            return checked_items
+
+        for i in range(model.rowCount()):
             item = model.item(i)
-            if item.checkState() == Qt.Checked:
+            if item and item.checkState() == Qt.Checked:
                 checked_items.append(item.data(Qt.UserRole))
         return checked_items
 
     @staticmethod
     def keepPopupOpen(combobox):
-        """A popup ablak nyitva tartása, amíg nem kattintunk máshova."""
+        """
+        A popup nyitva tartása és a checkbox kattintások kezelése úgy,
+        hogy a szövegre kattintás is működjön.
+        """
         view = combobox.view()
+
+        if hasattr(view, "_original_mouseReleaseEvent"):
+            return
+
         view._original_mouseReleaseEvent = view.mouseReleaseEvent
-        view.mouseReleaseEvent = lambda event: ComboBoxHandler.handleMouseReleaseEvent(combobox, event)
+
+        def _mouseReleaseEvent(event):
+            index = view.indexAt(event.pos())
+            if index.isValid():
+                rect = view.visualRect(index)
+                checkbox_area = rect.adjusted(0, 0, 20, 0)  # kb. checkbox hely
+                if event.pos().x() <= checkbox_area.right():
+                    # Csak a checkbox toggle -> popup nyitva marad
+                    ComboBoxHandler.toggleMetricCheckbox(index, combobox)
+                    return
+
+            # Ha nem checkboxra kattintottunk -> normál viselkedés
+            view._original_mouseReleaseEvent(event)
+
+        view.mouseReleaseEvent = _mouseReleaseEvent
 
     @staticmethod
     def handleMouseReleaseEvent(combobox, event):
@@ -135,3 +171,19 @@ class ComboBoxHandler:
             ComboBoxHandler.toggleMetricCheckbox(index, combobox)
         else:
             view._original_mouseReleaseEvent(event)
+
+    @staticmethod
+    def updateLineEditWithCheckedItems(combobox):
+        """A combobox felső részében megjeleníti a kipipált elemeket vesszővel elválasztva."""
+        model = combobox.model()
+        if model is None:
+            combobox.lineEdit().clear()
+            return
+
+        checked_names = []
+        for i in range(model.rowCount()):
+            item = model.item(i)
+            if item and item.checkState() == Qt.Checked:
+                checked_names.append(item.text())
+
+        combobox.lineEdit().setText(", ".join(checked_names))
