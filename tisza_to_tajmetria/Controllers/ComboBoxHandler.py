@@ -11,8 +11,6 @@ class ComboBoxHandler:
         combobox.setEditable(True)
         combobox.setInsertPolicy(combobox.NoInsert)
         combobox.setCurrentIndex(-1)
-        combobox.lineEdit().setClearButtonEnabled(True)
-        combobox.lineEdit().setPlaceholderText("Search...")
 
         combobox.lineEdit().textChanged.connect(
             lambda text: ComboBoxHandler.textChangeOnSearch(combobox, text)
@@ -46,15 +44,14 @@ class ComboBoxHandler:
     @staticmethod
     def loadLayersToCombobox(combobox, layer_types=None):
         if layer_types is None:
-            layer_types = ['raster', 'vector']
+            layer_types = ['raster']
 
         combobox.clear()
         layers = QgsProject.instance().mapLayers().values()
         model = QStandardItemModel(combobox)
 
         for layer in layers:
-            if ('raster' in layer_types and layer.type() == layer.RasterLayer) or \
-               ('vector' in layer_types and layer.type() == layer.VectorLayer):
+            if 'raster' in layer_types and layer.type() == layer.RasterLayer:
                 item = QStandardItem(layer.name())
                 item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                 item.setData(Qt.Unchecked, Qt.CheckStateRole)
@@ -66,10 +63,12 @@ class ComboBoxHandler:
 
         combobox.setModel(model)
 
+        # Popup nyitva tartása
         ComboBoxHandler.keepPopupOpen(combobox)
 
+        # Checkbox állapotának kezelése
         combobox.view().pressed.connect(
-            lambda index: combobox.keepPopupOpen(index, combobox)
+            lambda index: ComboBoxHandler.toggleMetricCheckbox(index, combobox)
         )
 
         return combobox
@@ -88,6 +87,7 @@ class ComboBoxHandler:
 
         combobox.setModel(model)
 
+        # Checkbox állapotának kezelése
         combobox.view().pressed.connect(
             lambda index: ComboBoxHandler.toggleMetricCheckbox(index, combobox)
         )
@@ -96,6 +96,7 @@ class ComboBoxHandler:
 
     @staticmethod
     def toggleMetricCheckbox(index, combobox):
+        """Checkbox állapot váltása a listában."""
         item = combobox.model().itemFromIndex(index)
         if item.checkState() == Qt.Checked:
             item.setCheckState(Qt.Unchecked)
@@ -108,22 +109,25 @@ class ComboBoxHandler:
 
     @staticmethod
     def getCheckedItems(combobox):
-        checkItems = []
+        """Visszaadja a kiválasztott checkbox elemeket."""
+        checked_items = []
         model = combobox.model()
         for i in range(model.rowCount()):
             item = model.item(i)
             if item.checkState() == Qt.Checked:
-                checkItems.append(item.data(Qt.UserRole))
-        return checkItems
+                checked_items.append(item.data(Qt.UserRole))
+        return checked_items
 
     @staticmethod
     def keepPopupOpen(combobox):
+        """A popup ablak nyitva tartása, amíg nem kattintunk máshova."""
         view = combobox.view()
         view._original_mouseReleaseEvent = view.mouseReleaseEvent
         view.mouseReleaseEvent = lambda event: ComboBoxHandler.handleMouseReleaseEvent(combobox, event)
 
     @staticmethod
     def handleMouseReleaseEvent(combobox, event):
+        """Kezeli az egérkattintást úgy, hogy a popup ne záródjon be automatikusan."""
         view = combobox.view()
         index = view.indexAt(event.pos())
 
