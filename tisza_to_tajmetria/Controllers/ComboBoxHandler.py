@@ -19,8 +19,7 @@ class ComboBoxHandler:
 
     @staticmethod
     def textChangeOnSearch(combobox, text):
-        # Csak akkor filter, ha ténylegesen a felhasználó ír valamit
-        if text != combobox.lineEdit().text():  # így a lineEdit frissítése nem indít filtert
+        if text != combobox.lineEdit().text():
             ComboBoxHandler.filterCombobox(combobox, text)
 
             if not combobox._popup_opened:
@@ -65,10 +64,8 @@ class ComboBoxHandler:
 
         combobox.setModel(model)
 
-        # Popup nyitva tartása
         ComboBoxHandler.keepPopupOpen(combobox)
 
-        # Checkbox állapotának kezelése
         combobox.view().pressed.connect(
             lambda index: ComboBoxHandler.toggleMetricCheckbox(index, combobox)
         )
@@ -89,7 +86,6 @@ class ComboBoxHandler:
 
         combobox.setModel(model)
 
-        # Checkbox állapotának kezelése
         combobox.view().pressed.connect(
             lambda index: ComboBoxHandler.toggleMetricCheckbox(index, combobox)
         )
@@ -98,18 +94,15 @@ class ComboBoxHandler:
 
     @staticmethod
     def toggleMetricCheckbox(index, combobox):
-        """Checkbox állapot váltása a listában és lineEdit frissítése."""
         item = combobox.model().itemFromIndex(index)
         if item is None:
             return
 
-        # Állapot váltása
         if item.checkState() == Qt.Checked:
             item.setCheckState(Qt.Unchecked)
         else:
             item.setCheckState(Qt.Checked)
 
-        # Frissítjük a lineEdit-et a kiválasztott elemek neveivel
         checked_items = []
         model = combobox.model()
         for i in range(model.rowCount()):
@@ -121,7 +114,6 @@ class ComboBoxHandler:
 
     @staticmethod
     def getCheckedItems(combobox):
-        """Visszaadja a kiválasztott checkbox elemek UserRole értékét."""
         checked_items = []
         model = combobox.model()
         if model is None:
@@ -135,10 +127,6 @@ class ComboBoxHandler:
 
     @staticmethod
     def keepPopupOpen(combobox):
-        """
-        A popup nyitva tartása és a checkbox kattintások kezelése úgy,
-        hogy a szövegre kattintás is működjön.
-        """
         view = combobox.view()
 
         if hasattr(view, "_original_mouseReleaseEvent"):
@@ -152,18 +140,15 @@ class ComboBoxHandler:
                 rect = view.visualRect(index)
                 checkbox_area = rect.adjusted(0, 0, 20, 0)  # kb. checkbox hely
                 if event.pos().x() <= checkbox_area.right():
-                    # Csak a checkbox toggle -> popup nyitva marad
                     ComboBoxHandler.toggleMetricCheckbox(index, combobox)
                     return
 
-            # Ha nem checkboxra kattintottunk -> normál viselkedés
             view._original_mouseReleaseEvent(event)
 
         view.mouseReleaseEvent = _mouseReleaseEvent
 
     @staticmethod
     def handleMouseReleaseEvent(combobox, event):
-        """Kezeli az egérkattintást úgy, hogy a popup ne záródjon be automatikusan."""
         view = combobox.view()
         index = view.indexAt(event.pos())
 
@@ -174,7 +159,6 @@ class ComboBoxHandler:
 
     @staticmethod
     def updateLineEditWithCheckedItems(combobox):
-        """A combobox felső részében megjeleníti a kipipált elemeket vesszővel elválasztva."""
         model = combobox.model()
         if model is None:
             combobox.lineEdit().clear()
