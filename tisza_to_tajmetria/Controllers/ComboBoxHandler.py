@@ -3,7 +3,6 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5 import QtWidgets
 
-
 from tisza_to_tajmetria.Metrics.Metrics import Metrics
 
 
@@ -11,7 +10,7 @@ class ComboBoxHandler:
     @staticmethod
     def makeComboboxEditable(combobox):
         combobox.setEditable(True)
-        combobox.lineEdit().setPlaceholderText("Searching...")
+        combobox.lineEdit().setPlaceholderText("Search...")
 
     @staticmethod
     def loadLayersToCombobox(combobox, layer_types=None):
@@ -27,11 +26,11 @@ class ComboBoxHandler:
                 item = QStandardItem(layer.name())
                 item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                 item.setData(Qt.Unchecked, Qt.CheckStateRole)
-                item.setData(layer, Qt.UserRole)
+                item.setData(layer, Qt.UserRole)  # a réteg maga
                 model.appendRow(item)
 
         if model.rowCount() == 0:
-            item = QStandardItem("No layers selected")
+            item = QStandardItem("No layers found")
             item.setEnabled(False)
             model.appendRow(item)
 
@@ -57,13 +56,17 @@ class ComboBoxHandler:
 
     @staticmethod
     def setupCommonFeatures(combobox):
+        ComboBoxHandler.makeComboboxEditable(combobox)
         ComboBoxHandler.keepPopupOpenOnClick(combobox)
+
         combobox.model().itemChanged.connect(
             lambda: ComboBoxHandler.updateLineEditText(combobox)
         )
+
         combobox.lineEdit().textChanged.connect(
             lambda text: ComboBoxHandler.filterModel(combobox, text)
         )
+
         ComboBoxHandler.updateLineEditText(combobox)
 
     @staticmethod
@@ -76,6 +79,7 @@ class ComboBoxHandler:
                 new_state = Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
                 item.setCheckState(new_state)
             combobox.showPopup()
+
         try:
             view.pressed.disconnect()
         except Exception:
@@ -98,25 +102,27 @@ class ComboBoxHandler:
 
     @staticmethod
     def filterModel(combobox, text):
-        checked_texts = []
         model = combobox.model()
-        for i in range(model.rowCount()):
-            item = model.item(i)
-            if item and item.checkState() == Qt.Checked:
-                checked_texts.append(item.text())
+        search_term = text.lower().strip()
 
-        if text == ", ".join(checked_texts):
+        checked_items = [
+            model.item(i).text() for i in range(model.rowCount())
+            if model.item(i) and model.item(i).checkState() == Qt.Checked
+        ]
+        if search_term == "" or search_term == ", ".join(checked_items).lower():
             for i in range(model.rowCount()):
                 combobox.view().setRowHidden(i, False)
+            combobox.showPopup()
             return
 
-        search_term = text.lower()
         for i in range(model.rowCount()):
             item = model.item(i)
             if item:
                 item_text = item.text().lower()
-                is_hidden = search_term not in item_text
+                is_hidden = search_term not in item_text and item.checkState() != Qt.Checked
                 combobox.view().setRowHidden(i, is_hidden)
+
+        combobox.showPopup()
 
     @staticmethod
     def getCheckedItems(combobox):
