@@ -156,6 +156,7 @@ class TiszaToTajmetria:
             )
             return
 
+        #TODO: Not every metric is in square km
         for layer in selected_layers:
             for metric_func, metric_name in selected_metrics:
                 value = metric_func(layer)
