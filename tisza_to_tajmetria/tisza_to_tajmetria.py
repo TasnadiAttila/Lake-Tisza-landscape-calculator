@@ -197,7 +197,6 @@ class TiszaToTajmetria:
             )
             return
 
-        #TODO: Not every metric is in square km
         for layer in selected_layers:
             land_cover_mapping = self.get_land_cover_mapping_from_layer(layer)
 
@@ -208,7 +207,10 @@ class TiszaToTajmetria:
                     msg_parts = []
                     for cls, v in value.items():
                         class_name = land_cover_mapping.get(cls, f"Class {cls}")
-                        msg_parts.append(f"{class_name}: {v:.2f} %")
+                        if metric_name == "Mean Patch Area":
+                            msg_parts.append(f"{class_name}: {v:.2f} km²")
+                        else:
+                            msg_parts.append(f"{class_name}: {v:.2f} %")
                     msg = "; ".join(msg_parts)
 
                 elif isinstance(value, (int, float)):
@@ -223,8 +225,6 @@ class TiszaToTajmetria:
                     level=0,
                     duration=10
                 )
-
-
 
         # # Create an new Excel file and add a worksheet.
         # workbook = xlsxwriter.Workbook(output_path)

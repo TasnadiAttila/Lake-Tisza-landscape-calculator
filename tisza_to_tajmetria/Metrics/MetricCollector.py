@@ -7,6 +7,7 @@ from tisza_to_tajmetria.Metrics.MetricImplementations.GreatestPatchArea import G
 from tisza_to_tajmetria.Metrics.MetricImplementations.LandscapeDivision import LandscapeDivision
 from tisza_to_tajmetria.Metrics.MetricImplementations.LandscapeProportion import LandscapeProportion
 from tisza_to_tajmetria.Metrics.MetricImplementations.LandCover import LandCover
+from tisza_to_tajmetria.Metrics.MetricImplementations.MeanPatchArea import MeanPatchArea
 
 
 class Metrics(Enum):
@@ -17,6 +18,7 @@ class Metrics(Enum):
     LandscapeDivision = (LandscapeDivision.name, LandscapeDivision.calculateMetric)
     LandscapeProportion = (LandscapeProportion.name, LandscapeProportion.calculateMetric)
     LandCover = (LandCover.name, LandCover.calculateMetric)
+    MeanPatchArea = (MeanPatchArea.name, MeanPatchArea.calculateMetric)
 
     def __init__(self, name: str, metric):
         self._name = name
