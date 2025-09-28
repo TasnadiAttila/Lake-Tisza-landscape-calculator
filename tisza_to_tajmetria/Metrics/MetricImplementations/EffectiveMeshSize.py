@@ -1,5 +1,5 @@
 from abc import ABC
-from .IMetricsCalculator import IMetricsCalculator
+from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
 
 class EffectiveMeshSize(IMetricsCalculator, ABC):
     """Calculate effective mesh size in square kilometers"""

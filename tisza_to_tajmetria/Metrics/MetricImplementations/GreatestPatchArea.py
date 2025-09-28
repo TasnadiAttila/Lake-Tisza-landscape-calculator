@@ -1,5 +1,5 @@
 from abc import ABC
-from .IMetricsCalculator import IMetricsCalculator
+from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
 from qgis.core import (
     QgsRasterLayer,
     QgsVectorLayer,
@@ -9,15 +9,15 @@ from qgis.core import (
 import processing
 import os
 
-class LandscapeProportion(IMetricsCalculator, ABC):
-    """Calculate the Landscape Proportion (LP).
-    Unitless metric representing the proportion of the landscape occupied by patches (0-1)."""
-    name = "Landscape Proportion"
+class GreatestPatchArea(IMetricsCalculator, ABC):
+    """Calculate the largest patch area by converting raster to polygons and measuring"""
+    name = "Greatest Patch Area"
 
     @staticmethod
     def calculateMetric(layer):
         if not isinstance(layer, QgsRasterLayer):
             raise TypeError("Input layer must be a raster layer")
+
 
         feedback = QgsProcessingFeedback()
         context = QgsProcessingContext()
@@ -25,6 +25,7 @@ class LandscapeProportion(IMetricsCalculator, ABC):
         temp_folder = os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp")
         if not os.path.exists(temp_folder):
             os.makedirs(temp_folder)
+
         polygon_output = os.path.join(temp_folder, "temp_raster_to_polygon.gpkg")
 
         processing.run(
@@ -44,10 +45,11 @@ class LandscapeProportion(IMetricsCalculator, ABC):
         if not polygon_layer.isValid():
             raise RuntimeError("Polygonized layer is invalid")
 
+
         provider = layer.dataProvider()
         nodata = provider.sourceNoDataValue(1)
 
-        total_patch_area = 0.0
+        max_area = 0.0
         for feature in polygon_layer.getFeatures():
             value = feature["VALUE"]
 
@@ -58,15 +60,9 @@ class LandscapeProportion(IMetricsCalculator, ABC):
 
             geom = feature.geometry()
             if geom and not geom.isEmpty():
-                total_patch_area += geom.area()
+                area = geom.area()
+                if area > max_area:
+                    max_area = area
 
 
-        pixel_area = layer.rasterUnitsPerPixelX() * layer.rasterUnitsPerPixelY()
-        raster_total_area = layer.width() * layer.height() * pixel_area
-
-        if raster_total_area == 0:
-            return 0.0
-
-        lp = total_patch_area / raster_total_area  # unitless
-
-        return lp
+        return max_area / 1e6

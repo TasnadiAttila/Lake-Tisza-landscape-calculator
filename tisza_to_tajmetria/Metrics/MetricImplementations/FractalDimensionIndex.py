@@ -1,5 +1,5 @@
 from abc import ABC
-from .IMetricsCalculator import IMetricsCalculator
+from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
 import numpy as np
 import math
 

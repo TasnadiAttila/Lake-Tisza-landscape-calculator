@@ -1,5 +1,5 @@
 from abc import ABC
-from .IMetricsCalculator import IMetricsCalculator
+from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
 from qgis.core import (
     QgsRasterLayer,
     QgsVectorLayer,

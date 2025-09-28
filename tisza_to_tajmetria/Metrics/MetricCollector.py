@@ -1,12 +1,12 @@
 from enum import Enum
 
-from .EffectiveMeshSize import EffectiveMeshSize
-from .Euclidean import Euclidean
-from .FractalDimensionIndex import FractalDimensionIndex
-from .GreatestPatchArea import GreatestPatchArea
-from .LandscapeDivision import LandscapeDivision
-from .LandscapeProportion import LandscapeProportion
-from .LandCover import LandCover
+from tisza_to_tajmetria.Metrics.MetricImplementations.EffectiveMeshSize import EffectiveMeshSize
+from tisza_to_tajmetria.Metrics.MetricImplementations.Euclidean import Euclidean
+from tisza_to_tajmetria.Metrics.MetricImplementations.FractalDimensionIndex import FractalDimensionIndex
+from tisza_to_tajmetria.Metrics.MetricImplementations.GreatestPatchArea import GreatestPatchArea
+from tisza_to_tajmetria.Metrics.MetricImplementations.LandscapeDivision import LandscapeDivision
+from tisza_to_tajmetria.Metrics.MetricImplementations.LandscapeProportion import LandscapeProportion
+from tisza_to_tajmetria.Metrics.MetricImplementations.LandCover import LandCover
 
 
 class Metrics(Enum):

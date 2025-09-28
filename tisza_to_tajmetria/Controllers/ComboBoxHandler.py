@@ -3,7 +3,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5 import QtWidgets
 
-from tisza_to_tajmetria.Metrics.Metrics import Metrics
+from tisza_to_tajmetria.Metrics.MetricCollector import Metrics
 
 
 class ComboBoxHandler:
