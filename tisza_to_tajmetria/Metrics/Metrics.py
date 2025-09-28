@@ -6,6 +6,7 @@ from .FractalDimensionIndex import FractalDimensionIndex
 from .GreatestPatchArea import GreatestPatchArea
 from .LandscapeDivision import LandscapeDivision
 from .LandscapeProportion import LandscapeProportion
+from .LandCover import LandCover
 
 
 class Metrics(Enum):
@@ -15,6 +16,7 @@ class Metrics(Enum):
     GreatestPatchArea = (GreatestPatchArea.name, GreatestPatchArea.calculateMetric)
     LandscapeDivision = (LandscapeDivision.name, LandscapeDivision.calculateMetric)
     LandscapeProportion = (LandscapeProportion.name, LandscapeProportion.calculateMetric)
+    LandCover = (LandCover.name, LandCover.calculateMetric)
 
     def __init__(self, name: str, metric):
         self._name = name

@@ -21,7 +21,7 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, QgsColorRampShader
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 from qgis.core import Qgis
@@ -133,6 +133,46 @@ class TiszaToTajmetria:
         self.dlg.show()
         self.dlg.exec_()
 
+    @staticmethod
+    def get_land_cover_mapping_from_layer(layer):
+        renderer = layer.renderer()
+        mapping = {}
+
+        print(f"Renderer type: {renderer.type()}")
+
+        if renderer.type() == 'paletted':
+            classes = renderer.classes()
+            for cls in classes:
+                mapping[float(cls.value)] = cls.label
+
+        elif renderer.type() == 'singlebandpseudocolor':
+            shader = renderer.shader()
+            if shader:
+                color_ramp_shader = shader.rasterShaderFunction()
+                if isinstance(color_ramp_shader, QgsColorRampShader):
+                    for item in color_ramp_shader.colorRampItemList():
+                        mapping[float(item.value)] = item.label
+
+        elif renderer.type() == 'singlebandgray':
+            mapping["min"] = layer.dataProvider().bandStatistics(1).minimumValue
+            mapping["max"] = layer.dataProvider().bandStatistics(1).maximumValue
+
+        elif renderer.type() == 'multibandcolor':
+            mapping["Red band"] = renderer.redBand()
+            mapping["Green band"] = renderer.greenBand()
+            mapping["Blue band"] = renderer.blueBand()
+
+        elif renderer.type() == 'hillshade':
+            mapping["Band"] = renderer.band()
+            mapping["Z factor"] = renderer.zFactor()
+            mapping["Azimuth"] = renderer.azimuth()
+            mapping["Altitude"] = renderer.altitude()
+
+        else:
+            print("Unknown render type.")
+
+        return mapping
+
     def onCalculateClicked(self):
         output_path = self.dlg.saveFileDialog.filePath()
 
@@ -158,14 +198,32 @@ class TiszaToTajmetria:
 
         #TODO: Not every metric is in square km
         for layer in selected_layers:
+            land_cover_mapping = self.get_land_cover_mapping_from_layer(layer)
+
             for metric_func, metric_name in selected_metrics:
                 value = metric_func(layer)
+
+                if isinstance(value, dict):
+                    msg_parts = []
+                    for cls, v in value.items():
+                        class_name = land_cover_mapping.get(cls, f"Class {cls}")
+                        msg_parts.append(f"{class_name}: {v:.2f} %")
+                    msg = "; ".join(msg_parts)
+
+                elif isinstance(value, (int, float)):
+                    msg = f"{value:.2f} km²"
+
+                else:
+                    msg = str(value)
+
                 self.iface.messageBar().pushMessage(
                     "Info",
-                    f"{layer.name()} - {metric_name}: {value:.2f} km²",
+                    f"{layer.name()} - {metric_name}: {msg}",
                     level=0,
                     duration=10
                 )
+
+
 
         # # Create an new Excel file and add a worksheet.
         # workbook = xlsxwriter.Workbook(output_path)
