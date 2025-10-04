@@ -209,6 +209,12 @@ class TiszaToTajmetria:
                         class_name = land_cover_mapping.get(cls, f"Class {cls}")
                         if metric_name == "Mean Patch Area":
                             msg_parts.append(f"{class_name}: {v:.2f} km²")
+                        elif metric_name == "Nearest Neighbour Distance":
+                            msg_parts.append(f"{class_name}: {v:.2f} m")
+                        elif metric_name == "Number of Patches":
+                            msg_parts.append(f"{class_name}: {v:.2f} patch(es)")
+                        elif metric_name == "Patch Cohesion Index":
+                            msg_parts.append(f"{class_name}: {v:.2f}")
                         else:
                             msg_parts.append(f"{class_name}: {v:.2f} %")
                     msg = "; ".join(msg_parts)

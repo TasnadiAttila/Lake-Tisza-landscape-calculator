@@ -8,6 +8,10 @@ from tisza_to_tajmetria.Metrics.MetricImplementations.LandscapeDivision import L
 from tisza_to_tajmetria.Metrics.MetricImplementations.LandscapeProportion import LandscapeProportion
 from tisza_to_tajmetria.Metrics.MetricImplementations.LandCover import LandCover
 from tisza_to_tajmetria.Metrics.MetricImplementations.MeanPatchArea import MeanPatchArea
+from tisza_to_tajmetria.Metrics.MetricImplementations.MedianPatchArea import MedianPatchArea
+from tisza_to_tajmetria.Metrics.MetricImplementations.NearestNeighbourDistance import NearestNeighbourDistance
+from tisza_to_tajmetria.Metrics.MetricImplementations.NumberOfPatches import NumberOfPatches
+from tisza_to_tajmetria.Metrics.MetricImplementations.PatchCohesionIndex import PatchCohesionIndex
 
 
 class Metrics(Enum):
@@ -19,6 +23,10 @@ class Metrics(Enum):
     LandscapeProportion = (LandscapeProportion.name, LandscapeProportion.calculateMetric)
     LandCover = (LandCover.name, LandCover.calculateMetric)
     MeanPatchArea = (MeanPatchArea.name, MeanPatchArea.calculateMetric)
+    MedianPatchArea = (MedianPatchArea.name, MedianPatchArea.calculateMetric)
+    NearestNeighbourDistance = (NearestNeighbourDistance.name, NearestNeighbourDistance.calculateMetric)
+    NumberOfPatches = (NumberOfPatches.name, NumberOfPatches.calculateMetric)
+    PatchCohesionIndex = (PatchCohesionIndex.name, PatchCohesionIndex.calculateMetric)
 
     def __init__(self, name: str, metric):
         self._name = name
