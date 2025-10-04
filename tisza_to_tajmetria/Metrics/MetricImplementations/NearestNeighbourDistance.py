@@ -1,12 +1,12 @@
 from abc import ABC
-from qgis.core import QgsCoordinateReferenceSystem, QgsProject
+from ..Helper import bfs_collect
+from qgis.core import QgsCoordinateReferenceSystem
 from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
 import processing
-from ..Helper import bfs
+import math
 
-
-class MeanPatchArea(IMetricsCalculator, ABC):
-    name = "Mean Patch Area"
+class NearestNeighbourDistance(IMetricsCalculator, ABC):
+    name = "Nearest Neighbour Distance"
 
     @staticmethod
     def calculateMetric(layer):
@@ -30,12 +30,10 @@ class MeanPatchArea(IMetricsCalculator, ABC):
         height = temp_layer.height()
         block = provider.block(1, extent, width, height)
 
-        pixel_width = extent.width() / width
-        pixel_height = extent.height() / height
-        pixel_area = pixel_width * pixel_height
+        geotransform = (extent.xMinimum(), extent.width() / width, 0,
+                        extent.yMaximum(), 0, -extent.height() / height)
 
         visited = [[False for _ in range(width)] for _ in range(height)]
-        class_patch_areas = {}
         directions = [(-1, -1), (-1, 0), (-1, 1),
                       (0, -1),          (0, 1),
                       (1, -1),  (1, 0),  (1, 1)]
@@ -45,8 +43,11 @@ class MeanPatchArea(IMetricsCalculator, ABC):
             "visited": visited,
             "height": height,
             "width": width,
-            "directions": directions
+            "directions": directions,
+            "geotransform": geotransform
         }
+
+        class_centroids = {}
 
         for row in range(height):
             for col in range(width):
@@ -55,14 +56,24 @@ class MeanPatchArea(IMetricsCalculator, ABC):
                 value = block.value(row, col)
                 if value is None or value == 0:
                     continue
-                patch_pixel_count = bfs(row, col, value, context)
-                area = (patch_pixel_count * pixel_area) / 1e6
-                if value not in class_patch_areas:
-                    class_patch_areas[value] = []
-                class_patch_areas[value].append(area)
+                centroid = bfs_collect(row, col, value, context)
+                if value not in class_centroids:
+                    class_centroids[value] = []
+                class_centroids[value].append(centroid)
 
-        mean_patch_area = {}
-        for cls, areas in class_patch_areas.items():
-            mean_patch_area[cls] = sum(areas) / len(areas) if areas else 0.0
+        nnd_result = {}
+        for cls, centroids in class_centroids.items():
+            distances = []
+            for i, (x1, y1) in enumerate(centroids):
+                min_dist = float("inf")
+                for j, (x2, y2) in enumerate(centroids):
+                    if i == j:
+                        continue
+                    d = math.hypot(x1 - x2, y1 - y2)
+                    if d < min_dist:
+                        min_dist = d
+                if min_dist < float("inf"):
+                    distances.append(min_dist)
+            nnd_result[cls] = sum(distances) / len(distances) if distances else 0.0
 
-        return mean_patch_area
+        return nnd_result

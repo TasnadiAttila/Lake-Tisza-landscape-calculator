@@ -1,12 +1,12 @@
 from abc import ABC
+from ..Helper import bfs
 from qgis.core import QgsCoordinateReferenceSystem, QgsProject
 from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
 import processing
-from ..Helper import bfs
+import statistics
 
-
-class MeanPatchArea(IMetricsCalculator, ABC):
-    name = "Mean Patch Area"
+class MedianPatchArea(IMetricsCalculator, ABC):
+    name = "Median Patch Area"
 
     @staticmethod
     def calculateMetric(layer):
@@ -61,8 +61,11 @@ class MeanPatchArea(IMetricsCalculator, ABC):
                     class_patch_areas[value] = []
                 class_patch_areas[value].append(area)
 
-        mean_patch_area = {}
+        median_patch_area = {}
         for cls, areas in class_patch_areas.items():
-            mean_patch_area[cls] = sum(areas) / len(areas) if areas else 0.0
+            if areas:
+                median_patch_area[cls] = statistics.median(areas)
+            else:
+                median_patch_area[cls] = 0.0
 
-        return mean_patch_area
+        return median_patch_area
