@@ -12,6 +12,9 @@ from tisza_to_tajmetria.Metrics.MetricImplementations.MedianPatchArea import Med
 from tisza_to_tajmetria.Metrics.MetricImplementations.NearestNeighbourDistance import NearestNeighbourDistance
 from tisza_to_tajmetria.Metrics.MetricImplementations.NumberOfPatches import NumberOfPatches
 from tisza_to_tajmetria.Metrics.MetricImplementations.PatchCohesionIndex import PatchCohesionIndex
+from tisza_to_tajmetria.Metrics.MetricImplementations.PatchDensity import PatchDensity
+from tisza_to_tajmetria.Metrics.MetricImplementations.SmallestPatchArea import SmallestPatchArea
+from tisza_to_tajmetria.Metrics.MetricImplementations.SplittingIndex import SplittingIndex
 
 
 class Metrics(Enum):
@@ -27,6 +30,9 @@ class Metrics(Enum):
     NearestNeighbourDistance = (NearestNeighbourDistance.name, NearestNeighbourDistance.calculateMetric)
     NumberOfPatches = (NumberOfPatches.name, NumberOfPatches.calculateMetric)
     PatchCohesionIndex = (PatchCohesionIndex.name, PatchCohesionIndex.calculateMetric)
+    PatchDensity = (PatchDensity.name, PatchDensity.calculateMetric)
+    SmallestPatchArea = (SmallestPatchArea.name, SmallestPatchArea.calculateMetric)
+    SplittingIndex = (SplittingIndex.name, SplittingIndex.calculateMetric)
 
     def __init__(self, name: str, metric):
         self._name = name

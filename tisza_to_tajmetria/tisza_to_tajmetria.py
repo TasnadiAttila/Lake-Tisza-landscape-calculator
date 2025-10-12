@@ -202,29 +202,48 @@ class TiszaToTajmetria:
 
             for metric_func, metric_name in selected_metrics:
                 value = metric_func(layer)
+                msg_parts = []
 
+                # Ha a visszaadott érték dict (PatchDensity vagy SmallestPatchArea)
                 if isinstance(value, dict):
-                    msg_parts = []
-                    for cls, v in value.items():
-                        class_name = land_cover_mapping.get(cls, f"Class {cls}")
-                        if metric_name == "Mean Patch Area":
-                            msg_parts.append(f"{class_name}: {v:.2f} km²")
-                        elif metric_name == "Nearest Neighbour Distance":
-                            msg_parts.append(f"{class_name}: {v:.2f} m")
-                        elif metric_name == "Number of Patches":
-                            msg_parts.append(f"{class_name}: {v:.2f} patch(es)")
-                        elif metric_name == "Patch Cohesion Index":
-                            msg_parts.append(f"{class_name}: {v:.2f}")
-                        else:
-                            msg_parts.append(f"{class_name}: {v:.2f} %")
-                    msg = "; ".join(msg_parts)
+                    if metric_name == "Patch Density":
+                        # Összes patch density
+                        patch_density = value.get("patch_density", None)
+                        if patch_density is not None:
+                            msg_parts.append(f"Patch Density: {patch_density:.2f} patches/km²")
 
+                        # Patch szám kategóriánként
+                        patch_stats = value.get("patch_stats", {})
+                        for cls, stats in patch_stats.items():
+                            class_name = land_cover_mapping.get(cls, f"Class {cls}")
+                            num_patches = stats.get("num_patches", 0)
+                            msg_parts.append(f"{class_name}: {num_patches} patch(es)")
+
+                            # Ha van smallest_patch_area mező
+                            if "smallest_patch_area" in stats:
+                                smallest_area = stats["smallest_patch_area"]
+                                msg_parts.append(f"{class_name}: smallest patch area = {smallest_area:.2f} km²")
+
+                    elif metric_name == "Smallest Patch Area":
+                        # value = {class_value: smallest_area}
+                        for cls, area in value.items():
+                            class_name = land_cover_mapping.get(cls, f"Class {cls}")
+                            msg_parts.append(f"{class_name}: smallest patch area = {area:.2f} km²")
+
+                    else:
+                        # Más dict típusok
+                        msg_parts.append(str(value))
+
+                # Numerikus értékek (pl. Euclidean)
                 elif isinstance(value, (int, float)):
-                    msg = f"{value:.2f} km²"
+                    msg_parts.append(f"{value:.2f}")
 
                 else:
-                    msg = str(value)
+                    msg_parts.append(str(value))
 
+                msg = "; ".join(msg_parts)
+
+                # Kiíratás az üzenetsávra
                 self.iface.messageBar().pushMessage(
                     "Info",
                     f"{layer.name()} - {metric_name}: {msg}",
