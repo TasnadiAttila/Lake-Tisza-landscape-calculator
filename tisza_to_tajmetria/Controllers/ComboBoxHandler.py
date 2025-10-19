@@ -5,8 +5,9 @@ from PyQt5 import QtWidgets
 
 from tisza_to_tajmetria.Metrics.MetricCollector import Metrics
 
-
 class ComboBoxHandler:
+    ALL_NONE_TEXT = "All / None"
+
     @staticmethod
     def makeComboboxEditable(combobox):
         combobox.setEditable(True)
@@ -21,15 +22,32 @@ class ComboBoxHandler:
         layers = QgsProject.instance().mapLayers().values()
         model = QStandardItemModel(combobox)
 
+        all_none_item = QStandardItem(ComboBoxHandler.ALL_NONE_TEXT)
+        all_none_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+        all_none_item.setData(Qt.Unchecked, Qt.CheckStateRole)
+        all_none_item.setData(ComboBoxHandler.ALL_NONE_TEXT, Qt.UserRole)
+        model.appendRow(all_none_item)
+        # ------------------------------------
+
+        found_layers = False
         for layer in layers:
             if 'raster' in layer_types and layer.type() == layer.RasterLayer:
                 item = QStandardItem(layer.name())
-                item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
-                item.setData(Qt.Unchecked, Qt.CheckStateRole)
-                item.setData(layer, Qt.UserRole)  # a réteg maga
-                model.appendRow(item)
 
-        if model.rowCount() == 0:
+                is_osm_standard = layer.name() == "OSM Standard"
+
+                if is_osm_standard:
+                    item.setFlags(Qt.ItemIsEnabled)
+                    item.setData(Qt.Unchecked, Qt.CheckStateRole)  # Biztos, ami biztos
+                else:
+                    item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+                    item.setData(Qt.Unchecked, Qt.CheckStateRole)
+
+                item.setData(layer, Qt.UserRole)
+                model.appendRow(item)
+                found_layers = True
+
+        if not found_layers:
             item = QStandardItem("No layers found")
             item.setEnabled(False)
             model.appendRow(item)
@@ -42,6 +60,12 @@ class ComboBoxHandler:
     def loadMetricsToCombobox(combobox):
         combobox.clear()
         model = QStandardItemModel(combobox)
+
+        all_none_item = QStandardItem(ComboBoxHandler.ALL_NONE_TEXT)
+        all_none_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+        all_none_item.setData(Qt.Unchecked, Qt.CheckStateRole)
+        all_none_item.setData(ComboBoxHandler.ALL_NONE_TEXT, Qt.UserRole)
+        model.appendRow(all_none_item)
 
         for metric in Metrics:
             item = QStandardItem(metric.getMetricName)
@@ -70,14 +94,60 @@ class ComboBoxHandler:
         ComboBoxHandler.updateLineEditText(combobox)
 
     @staticmethod
+    def handleAllNoneItem(combobox):
+        model = combobox.model()
+
+        model.blockSignals(True)
+        combobox.lineEdit().blockSignals(True)
+
+        all_none_item = model.item(0)
+
+        checked_count = 0
+        total_items = model.rowCount()
+
+        checkable_items = []
+        for i in range(1, total_items):
+            item = model.item(i)
+            if item and (item.flags() & Qt.ItemIsUserCheckable):
+                checkable_items.append(item)
+                if item.checkState() == Qt.Checked:
+                    checked_count += 1
+
+        checkable_count = len(checkable_items)
+
+        if checked_count == checkable_count:
+            target_state = Qt.Unchecked
+        else:
+            target_state = Qt.Checked
+
+        for item in checkable_items:
+            if item.checkState() != target_state:
+                item.setCheckState(target_state)
+
+        all_none_item.setCheckState(Qt.Unchecked)
+
+        ComboBoxHandler.updateLineEditText(combobox)
+
+        combobox.lineEdit().blockSignals(False)
+        model.blockSignals(False)
+
+    @staticmethod
     def keepPopupOpenOnClick(combobox):
         view = combobox.view()
 
         def handle_press(index):
             item = combobox.model().itemFromIndex(index)
             if item and item.isEnabled():
-                new_state = Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
-                item.setCheckState(new_state)
+                if item.text() == ComboBoxHandler.ALL_NONE_TEXT:
+                    new_state = Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
+                    item.setCheckState(new_state)
+
+                    ComboBoxHandler.handleAllNoneItem(combobox)
+
+                elif item.flags() & Qt.ItemIsUserCheckable:
+                    new_state = Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
+                    item.setCheckState(new_state)
+
             combobox.showPopup()
 
         try:
@@ -93,7 +163,7 @@ class ComboBoxHandler:
         model = combobox.model()
         for i in range(model.rowCount()):
             item = model.item(i)
-            if item and item.checkState() == Qt.Checked:
+            if item and item.checkState() == Qt.Checked and item.text() != ComboBoxHandler.ALL_NONE_TEXT:
                 checked_items.append(item.text())
 
         combobox.lineEdit().blockSignals(True)
@@ -107,8 +177,10 @@ class ComboBoxHandler:
 
         checked_items = [
             model.item(i).text() for i in range(model.rowCount())
-            if model.item(i) and model.item(i).checkState() == Qt.Checked
+            if model.item(i) and model.item(i).checkState() == Qt.Checked and model.item(
+                i).text() != ComboBoxHandler.ALL_NONE_TEXT
         ]
+
         if search_term == "" or search_term == ", ".join(checked_items).lower():
             for i in range(model.rowCount()):
                 combobox.view().setRowHidden(i, False)
@@ -119,6 +191,10 @@ class ComboBoxHandler:
             item = model.item(i)
             if item:
                 item_text = item.text().lower()
+                if item_text == ComboBoxHandler.ALL_NONE_TEXT.lower():
+                    combobox.view().setRowHidden(i, False)
+                    continue
+
                 is_hidden = search_term not in item_text and item.checkState() != Qt.Checked
                 combobox.view().setRowHidden(i, is_hidden)
 
@@ -130,6 +206,6 @@ class ComboBoxHandler:
         model = combobox.model()
         for i in range(model.rowCount()):
             item = model.item(i)
-            if item and item.checkState() == Qt.Checked:
+            if item and item.checkState() == Qt.Checked and item.text() != ComboBoxHandler.ALL_NONE_TEXT:
                 checked_items_data.append(item.data(Qt.UserRole))
         return checked_items_data

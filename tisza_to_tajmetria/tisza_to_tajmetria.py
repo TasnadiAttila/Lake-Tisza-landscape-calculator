@@ -175,6 +175,28 @@ class TiszaToTajmetria:
         return mapping
 
     def onCalculateClicked(self):
+        # Definíció: Metrika neve (ahogy a ComboBoxHandler visszaadja) -> Mértékegység
+        UNIT_MAPPING = {
+            "Effective Mesh Size": "km²",  # Feltételezzük, hogy ez a CalculateEffectiveMeshSize barátságos neve
+            "Euclidean Distance": "km",  # Feltételezzük, hogy ez a CalculateEuclidean barátságos neve
+            "Fractal Dimension Index": "Index (0-2)",
+            "Greatest Patch Area": "km²",
+            "Landscape Division": "Index (0-1)",
+            "Landscape Proportion": "%",
+            "Total Landscape Area": "km²",  # LandCover-re használt becslés
+            "Mean Patch Area": "km²",
+            "Median Patch Area": "km²",
+            "Nearest Neighbour Distance": "km",
+            "Number of Patches": "patches",
+            "Patch Cohesion Index": "Index (0-100)",
+            "Patch Density": "patches/km²",
+            "Smallest Patch Area": "km²",
+            "Splitting Index": "Index (Dim.less)",
+            "CalculateEffectiveMeshSize": "km²",
+            "CalculateEuclidean": "km",
+            "LandCover": "km²",
+        }
+
         output_path = self.dlg.saveFileDialog.filePath()
 
         selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
@@ -197,78 +219,170 @@ class TiszaToTajmetria:
             )
             return
 
+        data_to_write = []
+        headers = ["Layer Name", "Metric Name", "Statistic Detail", "Value", "Unit"]
+
         for layer in selected_layers:
+            layer_name = layer.name()
             land_cover_mapping = self.get_land_cover_mapping_from_layer(layer)
 
             for metric_func, metric_name in selected_metrics:
-                value = metric_func(layer)
-                msg_parts = []
+                default_unit = UNIT_MAPPING.get(metric_name, "N/A")
 
-                # Ha a visszaadott érték dict (PatchDensity vagy SmallestPatchArea)
-                if isinstance(value, dict):
-                    if metric_name == "Patch Density":
-                        # Összes patch density
-                        patch_density = value.get("patch_density", None)
-                        if patch_density is not None:
-                            msg_parts.append(f"Patch Density: {patch_density:.2f} patches/km²")
+                try:
+                    value = metric_func(layer)
 
-                        # Patch szám kategóriánként
-                        patch_stats = value.get("patch_stats", {})
-                        for cls, stats in patch_stats.items():
-                            class_name = land_cover_mapping.get(cls, f"Class {cls}")
-                            num_patches = stats.get("num_patches", 0)
-                            msg_parts.append(f"{class_name}: {num_patches} patch(es)")
+                    if isinstance(value, dict):
+                        if metric_name == "Patch Density":
+                            patch_density_total = value.get("patch_density", None)
+                            if patch_density_total is not None:
+                                data_to_write.append([
+                                    layer_name,
+                                    metric_name,
+                                    "TOTAL Patch Density",
+                                    patch_density_total,
+                                    UNIT_MAPPING.get("Patch Density", "patches/km²")
+                                ])
 
-                            # Ha van smallest_patch_area mező
-                            if "smallest_patch_area" in stats:
-                                smallest_area = stats["smallest_patch_area"]
-                                msg_parts.append(f"{class_name}: smallest patch area = {smallest_area:.2f} km²")
+                            patch_stats = value.get("patch_stats", {})
+                            for cls, stats in patch_stats.items():
+                                class_name = land_cover_mapping.get(cls, f"Class {cls}")
 
-                    elif metric_name == "Smallest Patch Area":
-                        # value = {class_value: smallest_area}
-                        for cls, area in value.items():
-                            class_name = land_cover_mapping.get(cls, f"Class {cls}")
-                            msg_parts.append(f"{class_name}: smallest patch area = {area:.2f} km²")
+                                num_patches = stats.get("num_patches", 0)
+                                data_to_write.append([
+                                    layer_name,
+                                    metric_name,
+                                    f"{class_name} Patch Count",
+                                    num_patches,
+                                    "patches"
+                                ])
+
+                                if "smallest_patch_area" in stats:
+                                    smallest_area = stats["smallest_patch_area"]
+                                    data_to_write.append([
+                                        layer_name,
+                                        metric_name,
+                                        f"{class_name} Smallest Area",
+                                        smallest_area,
+                                        UNIT_MAPPING.get("Smallest Patch Area", "km²")
+                                    ])
+
+                        elif metric_name == "Smallest Patch Area":
+                            data_to_write.append([
+                                layer_name,
+                                metric_name,
+                                "Raw Dict Output",
+                                str(value),
+                                default_unit
+                            ])
+
+                        else:
+                            data_to_write.append([
+                                layer_name,
+                                metric_name,
+                                "Raw Dict Output",
+                                str(value),
+                                "N/A"
+                            ])
+
+                    elif isinstance(value, (int, float)):
+                        unit = "patches" if metric_name in ["NumberOfPatches", "Number of Patches"] else default_unit
+
+                        data_to_write.append([
+                            layer_name,
+                            metric_name,
+                            "TOTAL Value",
+                            value,
+                            unit
+                        ])
 
                     else:
-                        # Más dict típusok
-                        msg_parts.append(str(value))
+                        data_to_write.append([
+                            layer_name,
+                            metric_name,
+                            "Raw Output",
+                            str(value),
+                            "N/A"
+                        ])
 
-                # Numerikus értékek (pl. Euclidean)
-                elif isinstance(value, (int, float)):
-                    msg_parts.append(f"{value:.2f}")
+                    msg_parts = [f"{detail}: {value} {unit}" for _, _, detail, value, unit in data_to_write if
+                                 _ == layer_name and __ == metric_name]
+                    if msg_parts:
+                        self.iface.messageBar().pushMessage(
+                            "Info",
+                            f"{layer_name} - {metric_name} calculated. Results: {'; '.join(msg_parts[:1])}...",
+                            level=0,
+                            duration=3
+                        )
 
+                except Exception as e:
+                    data_to_write.append([
+                        layer_name,
+                        metric_name,
+                        "ERROR",
+                        f"Calculation Failed: {str(e)}",
+                        "N/A"
+                    ])
+                    self.iface.messageBar().pushMessage(
+                        "Error",
+                        f"Calculation failed for {layer_name} - {metric_name}: {str(e)}",
+                        level=Qgis.Critical,
+                        duration=5
+                    )
+
+        try:
+            workbook = xlsxwriter.Workbook(output_path)
+            worksheet = workbook.add_worksheet("Metric Results")
+
+            header_format = workbook.add_format(
+                {"bold": True, "border": 1, "bg_color": "#AEC6E3", "align": "center", "valign": "vcenter"})
+            numeric_format = workbook.add_format({"num_format": "0.00", "align": "left"})
+            general_format = workbook.add_format({"align": "left"})
+
+            worksheet.set_column("A:A", 25)
+            worksheet.set_column("B:B", 25)
+            worksheet.set_column("C:C", 35)
+            worksheet.set_column("D:D", 15, numeric_format)
+            worksheet.set_column("E:E", 15)
+
+            worksheet.write_row("A1", headers, header_format)
+
+            row_num = 1
+            for row_data in data_to_write:
+                layer_name, metric_name, detail, value, unit = row_data
+
+                worksheet.write(row_num, 0, layer_name)
+                worksheet.write(row_num, 1, metric_name)
+                worksheet.write(row_num, 2, detail)
+                worksheet.write(row_num, 4, unit)
+
+                if isinstance(value, (int, float)):
+                    worksheet.write(row_num, 3, value, numeric_format)
                 else:
-                    msg_parts.append(str(value))
+                    worksheet.write(row_num, 3, str(value), general_format)
 
-                msg = "; ".join(msg_parts)
+                row_num += 1
 
-                # Kiíratás az üzenetsávra
-                self.iface.messageBar().pushMessage(
-                    "Info",
-                    f"{layer.name()} - {metric_name}: {msg}",
-                    level=0,
-                    duration=10
-                )
+            workbook.close()
 
-        # # Create an new Excel file and add a worksheet.
-        # workbook = xlsxwriter.Workbook(output_path)
-        # worksheet = workbook.add_worksheet()
-        #
-        # # Widen the first column to make the text clearer.
-        # worksheet.set_column("A:A", 20)
-        #
-        # # Add a bold format to use to highlight cells.
-        # bold = workbook.add_format({"bold": True})
-        #
-        # # Write some simple text.
-        # worksheet.write("A1", "Hello")
-        #
-        # # Text with formatting.
-        # worksheet.write("A2", "World", bold)
-        #
-        # # Write some numbers, with row/column notation.
-        # worksheet.write(2, 0, 123)
-        # worksheet.write(3, 0, 123.456)
-        #
-        # workbook.close()
+            self.iface.messageBar().pushMessage(
+                "Success",
+                f"Metrics successfully written to Excel file: {output_path}",
+                level=Qgis.Success,
+                duration=5
+            )
+
+        except xlsxwriter.exceptions.FileCreateError:
+            self.iface.messageBar().pushMessage(
+                "Error",
+                f"Cannot create Excel file. Please close the file if it is open: {output_path}",
+                level=Qgis.Critical,
+                duration=10
+            )
+        except Exception as e:
+            self.iface.messageBar().pushMessage(
+                "Error",
+                f"An unexpected error occurred while writing to Excel: {str(e)}",
+                level=Qgis.Critical,
+                duration=10
+            )
