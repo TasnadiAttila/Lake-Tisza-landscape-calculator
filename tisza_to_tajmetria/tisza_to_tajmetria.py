@@ -120,16 +120,48 @@ class TiszaToTajmetria:
         if self.first_start:
             self.first_start = False
             self.dlg = TiszaToTajmetriaDialog()
+
             self.dlg.calculateButton.clicked.connect(self.onCalculateClicked)
             self.dlg.saveFileDialog.setFilter("Excel files (*.xlsx);")
 
-        ComboBoxHandler.makeComboboxEditable(self.dlg.layerSelector)
-        ComboBoxHandler.makeComboboxEditable(self.dlg.metricSelector)
+            # Combobox szerkeszthetőség
+            ComboBoxHandler.makeComboboxEditable(self.dlg.layerSelector)
+            ComboBoxHandler.makeComboboxEditable(self.dlg.metricSelector)
+            ComboBoxHandler.makeComboboxEditable(self.dlg.diagramMetricSelector)
 
-        self.dlg.saveFileDialog.setFilePath("")
-        ComboBoxHandler.loadLayersToCombobox(self.dlg.layerSelector, ['raster'])
-        ComboBoxHandler.loadMetricsToCombobox(self.dlg.metricSelector)
+            # Diagram selector alapból tiltva
+            self.dlg.diagramMetricSelector.setEnabled(False)
 
+            # Layer és metric combobox feltöltés
+            ComboBoxHandler.loadLayersToCombobox(self.dlg.layerSelector, ['raster'])
+            ComboBoxHandler.loadMetricsToCombobox(self.dlg.metricSelector)
+
+            # Diagram metric combobox frissítése, ha layer vagy metric változik
+            self.dlg.layerSelector.model().itemChanged.connect(
+                lambda: ComboBoxHandler.updateDiagramMetricSelector(
+                    self.dlg.layerSelector,
+                    self.dlg.metricSelector,
+                    self.dlg.diagramMetricSelector
+                )
+            )
+
+            self.dlg.metricSelector.model().itemChanged.connect(
+                lambda: ComboBoxHandler.updateDiagramMetricSelector(
+                    self.dlg.layerSelector,
+                    self.dlg.metricSelector,
+                    self.dlg.diagramMetricSelector
+                )
+            )
+
+            # Alapértelmezett fájlnév üres
+            self.dlg.saveFileDialog.setFilePath("")
+
+            # Első frissítés (ha alapból ki lenne választva valami)
+            ComboBoxHandler.updateDiagramMetricSelector(
+                self.dlg.layerSelector,
+                self.dlg.metricSelector,
+                self.dlg.diagramMetricSelector
+            )
 
         self.dlg.show()
         self.dlg.exec_()

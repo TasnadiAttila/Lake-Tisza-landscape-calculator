@@ -5,6 +5,7 @@ from PyQt5 import QtWidgets
 
 from tisza_to_tajmetria.Metrics.MetricCollector import Metrics
 
+
 class ComboBoxHandler:
     ALL_NONE_TEXT = "All / None"
 
@@ -27,7 +28,6 @@ class ComboBoxHandler:
         all_none_item.setData(Qt.Unchecked, Qt.CheckStateRole)
         all_none_item.setData(ComboBoxHandler.ALL_NONE_TEXT, Qt.UserRole)
         model.appendRow(all_none_item)
-        # ------------------------------------
 
         found_layers = False
         for layer in layers:
@@ -38,7 +38,7 @@ class ComboBoxHandler:
 
                 if is_osm_standard:
                     item.setFlags(Qt.ItemIsEnabled)
-                    item.setData(Qt.Unchecked, Qt.CheckStateRole)  # Biztos, ami biztos
+                    item.setData(Qt.Unchecked, Qt.CheckStateRole)
                 else:
                     item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                     item.setData(Qt.Unchecked, Qt.CheckStateRole)
@@ -77,6 +77,38 @@ class ComboBoxHandler:
         combobox.setModel(model)
         ComboBoxHandler.setupCommonFeatures(combobox)
         return combobox
+
+    @staticmethod
+    def loadDiagramMetricsFromSelectedMetrics(diagram_combobox, selected_metrics):
+        previous_checked = {
+            metric_name for _, metric_name in ComboBoxHandler.getCheckedItems(diagram_combobox)
+        }
+
+        diagram_combobox.clear()
+        model = QStandardItemModel(diagram_combobox)
+
+        all_none_item = QStandardItem(ComboBoxHandler.ALL_NONE_TEXT)
+        all_none_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+        all_none_item.setData(Qt.Unchecked, Qt.CheckStateRole)
+        all_none_item.setData(ComboBoxHandler.ALL_NONE_TEXT, Qt.UserRole)
+        model.appendRow(all_none_item)
+
+        for calc_func, metric_name in selected_metrics:
+            item = QStandardItem(metric_name)
+            item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+
+            # ✅ Visszaállítjuk a korábban kiválasztottakat
+            if metric_name in previous_checked:
+                item.setData(Qt.Checked, Qt.CheckStateRole)
+            else:
+                item.setData(Qt.Unchecked, Qt.CheckStateRole)
+
+            item.setData((calc_func, metric_name), Qt.UserRole)
+            model.appendRow(item)
+
+        diagram_combobox.setModel(model)
+        ComboBoxHandler.setupCommonFeatures(diagram_combobox)
+        return diagram_combobox
 
     @staticmethod
     def setupCommonFeatures(combobox):
@@ -209,3 +241,21 @@ class ComboBoxHandler:
             if item and item.checkState() == Qt.Checked and item.text() != ComboBoxHandler.ALL_NONE_TEXT:
                 checked_items_data.append(item.data(Qt.UserRole))
         return checked_items_data
+
+    @staticmethod
+    def updateDiagramMetricSelector(layerSelector, metricSelector, diagramMetricSelector):
+        """
+        Aktiválja és frissíti a diagramMetricSelector-t, ha legalább két layer ki van választva,
+        és frissíti a tartalmát az alapján, hogy a metricSelectorban mik vannak bejelölve.
+        """
+        selected_layers = ComboBoxHandler.getCheckedItems(layerSelector)
+        selected_metrics = ComboBoxHandler.getCheckedItems(metricSelector)
+
+        if len(selected_layers) >= 2 and selected_metrics:
+            diagramMetricSelector.setEnabled(True)
+            ComboBoxHandler.loadDiagramMetricsFromSelectedMetrics(
+                diagramMetricSelector, selected_metrics
+            )
+        else:
+            diagramMetricSelector.setEnabled(False)
+            diagramMetricSelector.clear()
