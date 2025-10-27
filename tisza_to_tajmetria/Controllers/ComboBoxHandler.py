@@ -207,18 +207,21 @@ class ComboBoxHandler:
         model = combobox.model()
         search_term = text.lower().strip()
 
+        # Store which items are checked so filtering doesn't hide them
         checked_items = [
             model.item(i).text() for i in range(model.rowCount())
-            if model.item(i) and model.item(i).checkState() == Qt.Checked and model.item(
-                i).text() != ComboBoxHandler.ALL_NONE_TEXT
+            if model.item(i) and model.item(i).checkState() == Qt.Checked
+            and model.item(i).text() != ComboBoxHandler.ALL_NONE_TEXT
         ]
 
-        if search_term == "" or search_term == ", ".join(checked_items).lower():
+        # Avoid interfering with typing when the text is equal to checked items string
+        joined_checked = ", ".join(checked_items).lower()
+        if search_term == "" or search_term == joined_checked:
             for i in range(model.rowCount()):
                 combobox.view().setRowHidden(i, False)
-            combobox.showPopup()
-            return
+            return  # 🔸 don't reopen popup or rewrite text
 
+        # Filtering logic
         for i in range(model.rowCount()):
             item = model.item(i)
             if item:
@@ -230,7 +233,9 @@ class ComboBoxHandler:
                 is_hidden = search_term not in item_text and item.checkState() != Qt.Checked
                 combobox.view().setRowHidden(i, is_hidden)
 
-        combobox.showPopup()
+        # 🔸 Don't reopen popup while typing, it causes focus loss
+        # combobox.showPopup()  # <-- remove this line
+
 
     @staticmethod
     def getCheckedItems(combobox):

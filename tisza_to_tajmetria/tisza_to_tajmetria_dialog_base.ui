@@ -119,6 +119,9 @@
       <verstretch>0</verstretch>
      </sizepolicy>
     </property>
+    <property name="focusPolicy">
+     <enum>Qt::StrongFocus</enum>
+    </property>
     <property name="insertPolicy">
      <enum>QComboBox::NoInsert</enum>
     </property>
