@@ -5,7 +5,7 @@ from scipy import ndimage
 
 class PatchDensity(IMetricsCalculator, ABC):
     """Calculate detailed Patch Density Index"""
-    name = "Detailed Patch Density Index"
+    name = "Patch Density"
 
     @staticmethod
     def calculateMetric(layer):
@@ -32,6 +32,11 @@ class PatchDensity(IMetricsCalculator, ABC):
         patch_stats = {}
         total_patches = 0
 
+        # Terület négyzetméterben
+        total_area_m2 = width * pixel_size_x * height * pixel_size_y
+        # Átváltás km²-re (1 km² = 1,000,000 m²)
+        total_area_km2 = total_area_m2 / 1_000_000
+
         for val in np.unique(raster_array):
             if val == 0:
                 continue  # ne számoljuk a háttér patch-et
@@ -46,18 +51,27 @@ class PatchDensity(IMetricsCalculator, ABC):
                 patch_size_area = patch_size_pixels * pixel_size_x * pixel_size_y
                 patch_areas.append(patch_size_area)
 
-            # Csak a patch-ek számát és területeket tároljuk, mean_patch_area nélkül
+            # Számítsuk ki az osztály teljes területét
+            class_area_m2 = np.sum(binary_mask) * pixel_size_x * pixel_size_y
+            class_area_km2 = class_area_m2 / 1_000_000
+
+            # Patch density ezen osztályra: patch-ek száma / teljes tájkép terület
+            patch_density_for_class = num_features / total_area_km2 if total_area_km2 != 0 else 0
+
+            # Tároljuk az osztály statisztikáit
             patch_stats[val-1] = {
                 "num_patches": num_features,
-                "patch_areas": patch_areas
+                "patch_areas": patch_areas,
+                "class_area_km2": class_area_km2,
+                "patch_density": patch_density_for_class
             }
 
-        total_area = width * pixel_size_x * height * pixel_size_y
-        patch_density = total_patches / total_area if total_area != 0 else 0
+        # Teljes patch density: összes patch / teljes terület
+        total_patch_density = total_patches / total_area_km2 if total_area_km2 != 0 else 0
 
         return {
-            "patch_density": patch_density,
+            "patch_density": total_patch_density,
             "total_patches": total_patches,
-            "total_area": total_area,
+            "total_area": total_area_km2,
             "patch_stats": patch_stats
         }

@@ -127,41 +127,13 @@ class TiszaToTajmetria:
             # Combobox szerkeszthetőség
             ComboBoxHandler.makeComboboxEditable(self.dlg.layerSelector)
             ComboBoxHandler.makeComboboxEditable(self.dlg.metricSelector)
-            ComboBoxHandler.makeComboboxEditable(self.dlg.diagramMetricSelector)
-
-            # Diagram selector alapból tiltva
-            self.dlg.diagramMetricSelector.setEnabled(False)
 
             # Layer és metric combobox feltöltés
             ComboBoxHandler.loadLayersToCombobox(self.dlg.layerSelector, ['raster'])
             ComboBoxHandler.loadMetricsToCombobox(self.dlg.metricSelector)
 
-            # Diagram metric combobox frissítése, ha layer vagy metric változik
-            self.dlg.layerSelector.model().itemChanged.connect(
-                lambda: ComboBoxHandler.updateDiagramMetricSelector(
-                    self.dlg.layerSelector,
-                    self.dlg.metricSelector,
-                    self.dlg.diagramMetricSelector
-                )
-            )
-
-            self.dlg.metricSelector.model().itemChanged.connect(
-                lambda: ComboBoxHandler.updateDiagramMetricSelector(
-                    self.dlg.layerSelector,
-                    self.dlg.metricSelector,
-                    self.dlg.diagramMetricSelector
-                )
-            )
-
             # Alapértelmezett fájlnév üres
             self.dlg.saveFileDialog.setFilePath("")
-
-            # Első frissítés (ha alapból ki lenne választva valami)
-            ComboBoxHandler.updateDiagramMetricSelector(
-                self.dlg.layerSelector,
-                self.dlg.metricSelector,
-                self.dlg.diagramMetricSelector
-            )
 
         self.dlg.show()
         self.dlg.exec_()
@@ -266,6 +238,30 @@ class TiszaToTajmetria:
 
                     if isinstance(value, dict):
                         if metric_name == "Patch Density":
+                            patch_stats = value.get("patch_stats", {})
+                            results_parts = []
+                            for cls, stats in patch_stats.items():
+                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
+                                # Remove numeric prefixes like "112 - Name" and skip fallback like "Class 0"
+                                if isinstance(original_label, str) and " - " in original_label:
+                                    display_label = original_label.split(" - ", 1)[1].strip()
+                                else:
+                                    display_label = str(original_label)
+                                # Skip unknown/fallback classes (e.g., "Class 0")
+                                if display_label.lower().startswith("class "):
+                                    continue
+                                class_patch_density = stats.get("patch_density", 0)
+                                results_parts.append(f"{display_label}: {class_patch_density:.4f}")
+
+                            summary_message = f"{layer_name} - Patch Density Results: " + ", ".join(results_parts)
+                            self.iface.messageBar().pushMessage(
+                                "Info",
+                                summary_message,
+                                level=Qgis.Info,
+                                duration=10
+                            )
+
+                            # Eredeti adatok írása az Excelhez továbbra is megmarad
                             patch_density_total = value.get("patch_density", None)
                             if patch_density_total is not None:
                                 data_to_write.append([
@@ -287,6 +283,16 @@ class TiszaToTajmetria:
                                     f"{class_name} Patch Count",
                                     num_patches,
                                     "patches"
+                                ])
+
+                                # Osztályonkénti patch density
+                                class_patch_density = stats.get("patch_density", 0)
+                                data_to_write.append([
+                                    layer_name,
+                                    metric_name,
+                                    f"{class_name} Patch Density",
+                                    class_patch_density,
+                                    "patches/km²"
                                 ])
 
                                 if "smallest_patch_area" in stats:
@@ -337,9 +343,11 @@ class TiszaToTajmetria:
                             "N/A"
                         ])
 
-                    msg_parts = [f"{detail}: {value} {unit}" for _, _, detail, value, unit in data_to_write if
-                                 _ == layer_name and __ == metric_name]
-                    if msg_parts:
+                    msg_parts = [f"{detail}: {val} {unit}" for lname, mname, detail, val, unit in data_to_write if
+                                 lname == layer_name and mname == metric_name]
+                    # For Patch Density we already logged a detailed per-class message above;
+                    # only log here for other metrics to avoid duplicate messages.
+                    if msg_parts and metric_name != "Patch Density":
                         self.iface.messageBar().pushMessage(
                             "Info",
                             f"{layer_name} - {metric_name} calculated. Results: {'; '.join(msg_parts[:1])}...",
@@ -362,59 +370,59 @@ class TiszaToTajmetria:
                         duration=5
                     )
 
-        try:
-            workbook = xlsxwriter.Workbook(output_path)
-            worksheet = workbook.add_worksheet("Metric Results")
+        # try:
+        #     workbook = xlsxwriter.Workbook(output_path)
+        #     worksheet = workbook.add_worksheet("Metric Results")
 
-            header_format = workbook.add_format(
-                {"bold": True, "border": 1, "bg_color": "#AEC6E3", "align": "center", "valign": "vcenter"})
-            numeric_format = workbook.add_format({"num_format": "0.00", "align": "left"})
-            general_format = workbook.add_format({"align": "left"})
+        #     header_format = workbook.add_format(
+        #         {"bold": True, "border": 1, "bg_color": "#AEC6E3", "align": "center", "valign": "vcenter"})
+        #     numeric_format = workbook.add_format({"num_format": "0.00", "align": "left"})
+        #     general_format = workbook.add_format({"align": "left"})
 
-            worksheet.set_column("A:A", 25)
-            worksheet.set_column("B:B", 25)
-            worksheet.set_column("C:C", 35)
-            worksheet.set_column("D:D", 15, numeric_format)
-            worksheet.set_column("E:E", 15)
+        #     worksheet.set_column("A:A", 25)
+        #     worksheet.set_column("B:B", 25)
+        #     worksheet.set_column("C:C", 35)
+        #     worksheet.set_column("D:D", 15, numeric_format)
+        #     worksheet.set_column("E:E", 15)
 
-            worksheet.write_row("A1", headers, header_format)
+        #     worksheet.write_row("A1", headers, header_format)
 
-            row_num = 1
-            for row_data in data_to_write:
-                layer_name, metric_name, detail, value, unit = row_data
+        #     row_num = 1
+        #     for row_data in data_to_write:
+        #         layer_name, metric_name, detail, value, unit = row_data
 
-                worksheet.write(row_num, 0, layer_name)
-                worksheet.write(row_num, 1, metric_name)
-                worksheet.write(row_num, 2, detail)
-                worksheet.write(row_num, 4, unit)
+        #         worksheet.write(row_num, 0, layer_name)
+        #         worksheet.write(row_num, 1, metric_name)
+        #         worksheet.write(row_num, 2, detail)
+        #         worksheet.write(row_num, 4, unit)
 
-                if isinstance(value, (int, float)):
-                    worksheet.write(row_num, 3, value, numeric_format)
-                else:
-                    worksheet.write(row_num, 3, str(value), general_format)
+        #         if isinstance(value, (int, float)):
+        #             worksheet.write(row_num, 3, value, numeric_format)
+        #         else:
+        #             worksheet.write(row_num, 3, str(value), general_format)
 
-                row_num += 1
+        #         row_num += 1
 
-            workbook.close()
+        #     workbook.close()
 
-            self.iface.messageBar().pushMessage(
-                "Success",
-                f"Metrics successfully written to Excel file: {output_path}",
-                level=Qgis.Success,
-                duration=5
-            )
+        #     self.iface.messageBar().pushMessage(
+        #         "Success",
+        #         f"Metrics successfully written to Excel file: {output_path}",
+        #         level=Qgis.Success,
+        #         duration=5
+        #     )
 
-        except xlsxwriter.exceptions.FileCreateError:
-            self.iface.messageBar().pushMessage(
-                "Error",
-                f"Cannot create Excel file. Please close the file if it is open: {output_path}",
-                level=Qgis.Critical,
-                duration=10
-            )
-        except Exception as e:
-            self.iface.messageBar().pushMessage(
-                "Error",
-                f"An unexpected error occurred while writing to Excel: {str(e)}",
-                level=Qgis.Critical,
-                duration=10
-            )
+        # except xlsxwriter.exceptions.FileCreateError:
+        #     self.iface.messageBar().pushMessage(
+        #         "Error",
+        #         f"Cannot create Excel file. Please close the file if it is open: {output_path}",
+        #         level=Qgis.Critical,
+        #         duration=10
+        #     )
+        # except Exception as e:
+        #     self.iface.messageBar().pushMessage(
+        #         "Error",
+        #         f"An unexpected error occurred while writing to Excel: {str(e)}",
+        #         level=Qgis.Critical,
+        #         duration=10
+        #     )

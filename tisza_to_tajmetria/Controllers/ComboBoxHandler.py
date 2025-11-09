@@ -246,21 +246,3 @@ class ComboBoxHandler:
             if item and item.checkState() == Qt.Checked and item.text() != ComboBoxHandler.ALL_NONE_TEXT:
                 checked_items_data.append(item.data(Qt.UserRole))
         return checked_items_data
-
-    @staticmethod
-    def updateDiagramMetricSelector(layerSelector, metricSelector, diagramMetricSelector):
-        """
-        Aktiválja és frissíti a diagramMetricSelector-t, ha legalább két layer ki van választva,
-        és frissíti a tartalmát az alapján, hogy a metricSelectorban mik vannak bejelölve.
-        """
-        selected_layers = ComboBoxHandler.getCheckedItems(layerSelector)
-        selected_metrics = ComboBoxHandler.getCheckedItems(metricSelector)
-
-        if len(selected_layers) >= 2 and selected_metrics:
-            diagramMetricSelector.setEnabled(True)
-            ComboBoxHandler.loadDiagramMetricsFromSelectedMetrics(
-                diagramMetricSelector, selected_metrics
-            )
-        else:
-            diagramMetricSelector.setEnabled(False)
-            diagramMetricSelector.clear()
