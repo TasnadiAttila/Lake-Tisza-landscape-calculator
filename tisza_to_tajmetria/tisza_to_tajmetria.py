@@ -239,21 +239,35 @@ class TiszaToTajmetria:
                     if isinstance(value, dict):
                         if metric_name == "Patch Density":
                             patch_stats = value.get("patch_stats", {})
-                            results_parts = []
+
+                            # Build a dict-like string with CLASS NAMES as keys,
+                            # similar to the "Smallest Patch Area" log format
+                            summary_dict_parts = []
                             for cls, stats in patch_stats.items():
                                 original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                                # Remove numeric prefixes like "112 - Name" and skip fallback like "Class 0"
+
+                                # Remove numeric prefixes like "112 - Name"
                                 if isinstance(original_label, str) and " - " in original_label:
                                     display_label = original_label.split(" - ", 1)[1].strip()
                                 else:
                                     display_label = str(original_label)
+
                                 # Skip unknown/fallback classes (e.g., "Class 0")
                                 if display_label.lower().startswith("class "):
                                     continue
-                                class_patch_density = stats.get("patch_density", 0)
-                                results_parts.append(f"{display_label}: {class_patch_density:.4f}")
 
-                            summary_message = f"{layer_name} - Patch Density Results: " + ", ".join(results_parts)
+                                class_patch_density = stats.get("patch_density", 0)
+                                summary_dict_parts.append(f"{display_label}: {class_patch_density:.4f}")
+
+                            # Example:
+                            #  Layer - Patch Density calculated. Results: Raw Dict Output:
+                            #  {Discontinuous urban fabric: 0.0020, ...} patches/km²...
+                            summary_message = (
+                                f"{layer_name} - Patch Density calculated. "
+                                f"Results: Raw Dict Output: "
+                                "{" + ", ".join(summary_dict_parts) + "} patches/km²..."
+                            )
+
                             self.iface.messageBar().pushMessage(
                                 "Info",
                                 summary_message,
@@ -261,20 +275,18 @@ class TiszaToTajmetria:
                                 duration=10
                             )
 
-                            # Eredeti adatok írása az Excelhez továbbra is megmarad
-                            patch_density_total = value.get("patch_density", None)
-                            if patch_density_total is not None:
-                                data_to_write.append([
-                                    layer_name,
-                                    metric_name,
-                                    "TOTAL Patch Density",
-                                    patch_density_total,
-                                    UNIT_MAPPING.get("Patch Density", "patches/km²")
-                                ])
-
                             patch_stats = value.get("patch_stats", {})
                             for cls, stats in patch_stats.items():
-                                class_name = land_cover_mapping.get(cls, f"Class {cls}")
+                                # Use the SAME cleaned class name as in the iface log
+                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
+                                if isinstance(original_label, str) and " - " in original_label:
+                                    class_name = original_label.split(" - ", 1)[1].strip()
+                                else:
+                                    class_name = str(original_label)
+
+                                # Skip unknown/fallback classes (e.g., "Class 0")
+                                if class_name.lower().startswith("class "):
+                                    continue
 
                                 num_patches = stats.get("num_patches", 0)
                                 data_to_write.append([
