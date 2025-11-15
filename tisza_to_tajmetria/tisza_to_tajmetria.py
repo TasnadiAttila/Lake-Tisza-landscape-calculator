@@ -370,59 +370,59 @@ class TiszaToTajmetria:
                         duration=5
                     )
 
-        # try:
-        #     workbook = xlsxwriter.Workbook(output_path)
-        #     worksheet = workbook.add_worksheet("Metric Results")
+        try:
+            workbook = xlsxwriter.Workbook(output_path)
+            worksheet = workbook.add_worksheet("Metric Results")
 
-        #     header_format = workbook.add_format(
-        #         {"bold": True, "border": 1, "bg_color": "#AEC6E3", "align": "center", "valign": "vcenter"})
-        #     numeric_format = workbook.add_format({"num_format": "0.00", "align": "left"})
-        #     general_format = workbook.add_format({"align": "left"})
+            header_format = workbook.add_format(
+                {"bold": True, "border": 1, "bg_color": "#AEC6E3", "align": "center", "valign": "vcenter"})
+            numeric_format = workbook.add_format({"num_format": "0.00", "align": "left"})
+            general_format = workbook.add_format({"align": "left"})
 
-        #     worksheet.set_column("A:A", 25)
-        #     worksheet.set_column("B:B", 25)
-        #     worksheet.set_column("C:C", 35)
-        #     worksheet.set_column("D:D", 15, numeric_format)
-        #     worksheet.set_column("E:E", 15)
+            worksheet.set_column("A:A", 25)
+            worksheet.set_column("B:B", 25)
+            worksheet.set_column("C:C", 35)
+            worksheet.set_column("D:D", 15, numeric_format)
+            worksheet.set_column("E:E", 15)
 
-        #     worksheet.write_row("A1", headers, header_format)
+            worksheet.write_row("A1", headers, header_format)
 
-        #     row_num = 1
-        #     for row_data in data_to_write:
-        #         layer_name, metric_name, detail, value, unit = row_data
+            row_num = 1
+            for row_data in data_to_write:
+                layer_name, metric_name, detail, value, unit = row_data
 
-        #         worksheet.write(row_num, 0, layer_name)
-        #         worksheet.write(row_num, 1, metric_name)
-        #         worksheet.write(row_num, 2, detail)
-        #         worksheet.write(row_num, 4, unit)
+                worksheet.write(row_num, 0, layer_name)
+                worksheet.write(row_num, 1, metric_name)
+                worksheet.write(row_num, 2, detail)
+                worksheet.write(row_num, 4, unit)
 
-        #         if isinstance(value, (int, float)):
-        #             worksheet.write(row_num, 3, value, numeric_format)
-        #         else:
-        #             worksheet.write(row_num, 3, str(value), general_format)
+                if isinstance(value, (int, float)):
+                    worksheet.write(row_num, 3, value, numeric_format)
+                else:
+                    worksheet.write(row_num, 3, str(value), general_format)
 
-        #         row_num += 1
+                row_num += 1
 
-        #     workbook.close()
+            workbook.close()
 
-        #     self.iface.messageBar().pushMessage(
-        #         "Success",
-        #         f"Metrics successfully written to Excel file: {output_path}",
-        #         level=Qgis.Success,
-        #         duration=5
-        #     )
+            self.iface.messageBar().pushMessage(
+                "Success",
+                f"Metrics successfully written to Excel file: {output_path}",
+                level=Qgis.Success,
+                duration=5
+            )
 
-        # except xlsxwriter.exceptions.FileCreateError:
-        #     self.iface.messageBar().pushMessage(
-        #         "Error",
-        #         f"Cannot create Excel file. Please close the file if it is open: {output_path}",
-        #         level=Qgis.Critical,
-        #         duration=10
-        #     )
-        # except Exception as e:
-        #     self.iface.messageBar().pushMessage(
-        #         "Error",
-        #         f"An unexpected error occurred while writing to Excel: {str(e)}",
-        #         level=Qgis.Critical,
-        #         duration=10
-        #     )
+        except xlsxwriter.exceptions.FileCreateError:
+            self.iface.messageBar().pushMessage(
+                "Error",
+                f"Cannot create Excel file. Please close the file if it is open: {output_path}",
+                level=Qgis.Critical,
+                duration=10
+            )
+        except Exception as e:
+            self.iface.messageBar().pushMessage(
+                "Error",
+                f"An unexpected error occurred while writing to Excel: {str(e)}",
+                level=Qgis.Critical,
+                duration=10
+            )
