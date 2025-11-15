@@ -187,6 +187,7 @@ class TiszaToTajmetria:
             "Greatest Patch Area": "km²",
             "Landscape Division": "Index (0-1)",
             "Landscape Proportion": "%",
+            "Land Cover": "%",
             "Total Landscape Area": "km²",  # LandCover-re használt becslés
             "Mean Patch Area": "km²",
             "Median Patch Area": "km²",
@@ -224,7 +225,16 @@ class TiszaToTajmetria:
             return
 
         data_to_write = []
-        headers = ["Layer Name", "Metric Name", "Statistic Detail", "Value", "Unit"]
+        # Add explicit columns for tidy plotting
+        headers = [
+            "Layer Name",
+            "Metric Name",
+            "Statistic Detail",
+            "Value",
+            "Unit",
+            "Class ID",
+            "Class Name",
+        ]
 
         for layer in selected_layers:
             layer_name = layer.name()
@@ -292,9 +302,11 @@ class TiszaToTajmetria:
                                 data_to_write.append([
                                     layer_name,
                                     metric_name,
-                                    f"{class_name} Patch Count",
+                                    "Patch Count",
                                     num_patches,
-                                    "patches"
+                                    "patches",
+                                    cls,
+                                    class_name,
                                 ])
 
                                 # Osztályonkénti patch density
@@ -302,9 +314,11 @@ class TiszaToTajmetria:
                                 data_to_write.append([
                                     layer_name,
                                     metric_name,
-                                    f"{class_name} Patch Density",
+                                    "Patch Density",
                                     class_patch_density,
-                                    "patches/km²"
+                                    "patches/km²",
+                                    cls,
+                                    class_name,
                                 ])
 
                                 if "smallest_patch_area" in stats:
@@ -317,14 +331,181 @@ class TiszaToTajmetria:
                                         UNIT_MAPPING.get("Smallest Patch Area", "km²")
                                     ])
 
+                        elif metric_name == "Land Cover":
+                            # value: dict -> {class_id: percentage}
+                            for cls, percentage in value.items():
+                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
+                                if isinstance(original_label, str) and " - " in original_label:
+                                    class_name = original_label.split(" - ", 1)[1].strip()
+                                else:
+                                    class_name = str(original_label)
+
+                                if class_name.lower().startswith("class "):
+                                    continue
+
+                                data_to_write.append([
+                                    layer_name,
+                                    metric_name,
+                                    "Percentage",
+                                    float(percentage),
+                                    "%",
+                                    cls,
+                                    class_name,
+                                ])
+
+                        elif metric_name == "Mean Patch Area":
+                            # value: dict -> {class_id: mean_area_km2}
+                            for cls, mean_area in value.items():
+                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
+                                if isinstance(original_label, str) and " - " in original_label:
+                                    class_name = original_label.split(" - ", 1)[1].strip()
+                                else:
+                                    class_name = str(original_label)
+
+                                if class_name.lower().startswith("class "):
+                                    continue
+
+                                data_to_write.append([
+                                    layer_name,
+                                    metric_name,
+                                    "Mean Patch Area",
+                                    float(mean_area),
+                                    UNIT_MAPPING.get("Mean Patch Area", "km²"),
+                                    cls,
+                                    class_name,
+                                ])
+
+                        elif metric_name == "Median Patch Area":
+                            # value: dict -> {class_id: median_area_km2}
+                            for cls, median_area in value.items():
+                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
+                                if isinstance(original_label, str) and " - " in original_label:
+                                    class_name = original_label.split(" - ", 1)[1].strip()
+                                else:
+                                    class_name = str(original_label)
+
+                                if class_name.lower().startswith("class "):
+                                    continue
+
+                                data_to_write.append([
+                                    layer_name,
+                                    metric_name,
+                                    "Median Patch Area",
+                                    float(median_area),
+                                    UNIT_MAPPING.get("Median Patch Area", "km²"),
+                                    cls,
+                                    class_name,
+                                ])
+
                         elif metric_name == "Smallest Patch Area":
-                            data_to_write.append([
-                                layer_name,
-                                metric_name,
-                                "Raw Dict Output",
-                                str(value),
-                                default_unit
-                            ])
+                            # value: dict -> {class_id: smallest_area_km2}
+                            for cls, smallest_area in value.items():
+                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
+                                if isinstance(original_label, str) and " - " in original_label:
+                                    class_name = original_label.split(" - ", 1)[1].strip()
+                                else:
+                                    class_name = str(original_label)
+
+                                if class_name.lower().startswith("class "):
+                                    continue
+
+                                data_to_write.append([
+                                    layer_name,
+                                    metric_name,
+                                    "Smallest Patch Area",
+                                    float(smallest_area),
+                                    UNIT_MAPPING.get("Smallest Patch Area", "km²"),
+                                    cls,
+                                    class_name,
+                                ])
+
+                        elif metric_name == "Nearest Neighbour Distance":
+                            # value: dict -> {class_id: avg_distance}
+                            for cls, distance_val in value.items():
+                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
+                                if isinstance(original_label, str) and " - " in original_label:
+                                    class_name = original_label.split(" - ", 1)[1].strip()
+                                else:
+                                    class_name = str(original_label)
+
+                                if class_name.lower().startswith("class "):
+                                    continue
+
+                                data_to_write.append([
+                                    layer_name,
+                                    metric_name,
+                                    "Nearest Neighbour Distance",
+                                    float(distance_val),
+                                    UNIT_MAPPING.get("Nearest Neighbour Distance", "km"),
+                                    cls,
+                                    class_name,
+                                ])
+
+                        elif metric_name == "Number of Patches":
+                            # value: dict -> {class_id: count}
+                            for cls, count_val in value.items():
+                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
+                                if isinstance(original_label, str) and " - " in original_label:
+                                    class_name = original_label.split(" - ", 1)[1].strip()
+                                else:
+                                    class_name = str(original_label)
+
+                                if class_name.lower().startswith("class "):
+                                    continue
+
+                                data_to_write.append([
+                                    layer_name,
+                                    metric_name,
+                                    "Patch Count",
+                                    int(count_val),
+                                    "patches",
+                                    cls,
+                                    class_name,
+                                ])
+
+                        elif metric_name == "Patch Cohesion Index":
+                            # value: dict -> {class_id: cohesion_index(0-100)}
+                            for cls, cohesion_val in value.items():
+                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
+                                if isinstance(original_label, str) and " - " in original_label:
+                                    class_name = original_label.split(" - ", 1)[1].strip()
+                                else:
+                                    class_name = str(original_label)
+
+                                if class_name.lower().startswith("class "):
+                                    continue
+
+                                data_to_write.append([
+                                    layer_name,
+                                    metric_name,
+                                    "Patch Cohesion Index",
+                                    float(cohesion_val),
+                                    UNIT_MAPPING.get("Patch Cohesion Index", "Index (0-100)"),
+                                    cls,
+                                    class_name,
+                                ])
+
+                        elif metric_name == "Splitting Index":
+                            # value: dict -> {class_id: SI}
+                            for cls, si_val in value.items():
+                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
+                                if isinstance(original_label, str) and " - " in original_label:
+                                    class_name = original_label.split(" - ", 1)[1].strip()
+                                else:
+                                    class_name = str(original_label)
+
+                                if class_name.lower().startswith("class "):
+                                    continue
+
+                                data_to_write.append([
+                                    layer_name,
+                                    metric_name,
+                                    "Splitting Index",
+                                    float(si_val),
+                                    UNIT_MAPPING.get("Splitting Index", "Index (Dim.less)"),
+                                    cls,
+                                    class_name,
+                                ])
 
                         else:
                             data_to_write.append([
@@ -332,7 +513,9 @@ class TiszaToTajmetria:
                                 metric_name,
                                 "Raw Dict Output",
                                 str(value),
-                                "N/A"
+                                "N/A",
+                                None,
+                                None,
                             ])
 
                     elif isinstance(value, (int, float)):
@@ -343,7 +526,9 @@ class TiszaToTajmetria:
                             metric_name,
                             "TOTAL Value",
                             value,
-                            unit
+                            unit,
+                            None,
+                            None,
                         ])
 
                     else:
@@ -352,11 +537,16 @@ class TiszaToTajmetria:
                             metric_name,
                             "Raw Output",
                             str(value),
-                            "N/A"
+                            "N/A",
+                            None,
+                            None,
                         ])
 
-                    msg_parts = [f"{detail}: {val} {unit}" for lname, mname, detail, val, unit in data_to_write if
-                                 lname == layer_name and mname == metric_name]
+                    msg_parts = [
+                        f"{detail}: {val} {unit}"
+                        for (lname, mname, detail, val, unit, _cid, _cname) in data_to_write
+                        if lname == layer_name and mname == metric_name
+                    ]
                     # For Patch Density we already logged a detailed per-class message above;
                     # only log here for other metrics to avoid duplicate messages.
                     if msg_parts and metric_name != "Patch Density":
@@ -396,17 +586,27 @@ class TiszaToTajmetria:
             worksheet.set_column("C:C", 35)
             worksheet.set_column("D:D", 15, numeric_format)
             worksheet.set_column("E:E", 15)
+            worksheet.set_column("F:F", 12)
+            worksheet.set_column("G:G", 30)
 
             worksheet.write_row("A1", headers, header_format)
 
             row_num = 1
             for row_data in data_to_write:
-                layer_name, metric_name, detail, value, unit = row_data
+                layer_name, metric_name, detail, value, unit, class_id, class_name = row_data
 
                 worksheet.write(row_num, 0, layer_name)
                 worksheet.write(row_num, 1, metric_name)
                 worksheet.write(row_num, 2, detail)
                 worksheet.write(row_num, 4, unit)
+                # Optional tidy fields for class-specific metrics
+                if class_id is not None:
+                    try:
+                        worksheet.write(row_num, 5, int(class_id))
+                    except Exception:
+                        worksheet.write(row_num, 5, str(class_id))
+                if class_name is not None:
+                    worksheet.write(row_num, 6, class_name)
 
                 if isinstance(value, (int, float)):
                     worksheet.write(row_num, 3, value, numeric_format)
