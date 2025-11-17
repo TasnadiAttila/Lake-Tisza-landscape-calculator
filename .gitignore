@@ -1,20 +1,5 @@
-# Ignore Python bytecode files
-*.pyc
-tisza_to_tajmetria/__pycache__/tisza_to_tajmetria.cpython-312.pyc
-tisza_to_tajmetria/__pycache__/tisza_to_tajmetria.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/LandCover.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/MeanPatchArea.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/MedianPatchArea.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/NumberOfPatches.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/PatchCohesionIndex.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/SmallestPatchArea.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/SplittingIndex.cpython-312.pyc
-tisza_to_tajmetria/__pycache__/tisza_to_tajmetria.cpython-312.pyc
-tisza_to_tajmetria/__pycache__/tisza_to_tajmetria.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/LandCover.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/MeanPatchArea.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/MedianPatchArea.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/NumberOfPatches.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/PatchCohesionIndex.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/SmallestPatchArea.cpython-312.pyc
-tisza_to_tajmetria/Metrics/MetricImplementations/__pycache__/SplittingIndex.cpython-312.pyc
+### Python: ignore bytecode and caches
+*.py[cod]
+*$py.class
+__pycache__/
+**/__pycache__/
