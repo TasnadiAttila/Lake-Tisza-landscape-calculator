@@ -1,55 +1,85 @@
 from abc import ABC
+from qgis.core import QgsCoordinateReferenceSystem
 from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
-import numpy as np
+from ..Helper import bfs_collect
+import processing
+import math
 
 class Euclidean(IMetricsCalculator, ABC):
-    """Calculate average Euclidean distance between patch centroids in raster"""
-    name = "Euclidean Nearest Neighbour"
+    """Average pairwise Euclidean distance between patch centroids (km).
+
+    Steps:
+    - If the layer is geographic, reproject to EPSG:32634 (meters).
+    - Identify contiguous patches per class and compute their centroids.
+    - Compute all pairwise distances between patch centroids.
+    - Return the mean distance in kilometers.
+    """
+    name = "Euclidean Distance"
 
     @staticmethod
     def calculateMetric(layer):
-        provider = layer.dataProvider()
-        pixel_size_x = layer.rasterUnitsPerPixelX()
-        pixel_size_y = layer.rasterUnitsPerPixelY()
+        temp_layer = layer
 
-        extent = layer.extent()
-        width = layer.width()
-        height = layer.height()
+        if layer.crs().isGeographic():
+            projected_crs = QgsCoordinateReferenceSystem("EPSG:32634")
+            temp_layer = processing.run(
+                "gdal:warpreproject",
+                {
+                    'INPUT': layer,
+                    'TARGET_CRS': projected_crs,
+                    'RESAMPLING': 0,
+                    'OUTPUT': 'TEMPORARY_OUTPUT'
+                }
+            )['OUTPUT']
 
-        stats = {}
+        provider = temp_layer.dataProvider()
+        extent = temp_layer.extent()
+        width = temp_layer.width()
+        height = temp_layer.height()
         block = provider.block(1, extent, width, height)
+
+        geotransform = (extent.xMinimum(), extent.width() / width, 0,
+                        extent.yMaximum(), 0, -extent.height() / height)
+
+        visited = [[False for _ in range(width)] for _ in range(height)]
+        directions = [(-1, -1), (-1, 0), (-1, 1),
+                      (0, -1),          (0, 1),
+                      (1, -1),  (1, 0),  (1, 1)]
+
+        context = {
+            "block": block,
+            "visited": visited,
+            "height": height,
+            "width": width,
+            "directions": directions,
+            "geotransform": geotransform
+        }
+
+        # Collect centroids for EACH contiguous patch across all classes
+        patch_centroids = []
         for row in range(height):
             for col in range(width):
-                val = block.value(row, col)
-                if val is None:
+                if visited[row][col]:
                     continue
-                if val not in stats:
-                    stats[val] = [[], []]  # x_coords, y_coords
-                stats[val][0].append(col * pixel_size_x)
-                stats[val][1].append(row * pixel_size_y)
+                val = block.value(row, col)
+                if val is None or val == 0:
+                    continue
+                centroid = bfs_collect(row, col, val, context)
+                patch_centroids.append(centroid)
 
-        centroids = []
-        for x_list, y_list in stats.values():
-            if len(x_list) == 0:
-                continue
-            x_mean = np.mean(x_list)
-            y_mean = np.mean(y_list)
-            centroids.append((x_mean, y_mean))
+        n = len(patch_centroids)
+        if n < 2:
+            return 0.0
 
-        if len(centroids) < 2:
-            return 0
-
-        centroids = np.array(centroids)
-
-        avg_distance = 0
-        count = 0
-        n = len(centroids)
+        # Average pairwise distance in km
+        total_km = 0.0
+        pairs = 0
         for i in range(n):
-            for j in range(i+1, n):
-                dx = centroids[i, 0] - centroids[j, 0]
-                dy = centroids[i, 1] - centroids[j, 1]
-                dist = np.sqrt(dx**2 + dy**2)
-                avg_distance += dist
-                count += 1
+            x1, y1 = patch_centroids[i]
+            for j in range(i + 1, n):
+                x2, y2 = patch_centroids[j]
+                d_m = math.hypot(x1 - x2, y1 - y2)
+                total_km += d_m / 1000.0
+                pairs += 1
 
-        return avg_distance / count
+        return total_km / pairs if pairs else 0.0

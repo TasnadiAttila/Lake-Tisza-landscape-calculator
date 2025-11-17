@@ -10,6 +10,14 @@ class NearestNeighbourDistance(IMetricsCalculator, ABC):
 
     @staticmethod
     def calculateMetric(layer):
+        """Calculate average nearest neighbour distance (per class) in kilometers.
+
+        For each land cover class a centroid is computed for every contiguous patch.
+        The nearest neighbour (Euclidean) distance between patch centroids is
+        computed in the layer's projected CRS (EPSG:32634 if original is geographic).
+        Distances are converted from meters to kilometers before averaging.
+        Returns: dict[class_value] -> mean_nearest_distance_km
+        """
         temp_layer = layer
 
         if layer.crs().isGeographic():
@@ -63,17 +71,17 @@ class NearestNeighbourDistance(IMetricsCalculator, ABC):
 
         nnd_result = {}
         for cls, centroids in class_centroids.items():
-            distances = []
+            distances_km = []
             for i, (x1, y1) in enumerate(centroids):
-                min_dist = float("inf")
+                min_dist_m = float("inf")
                 for j, (x2, y2) in enumerate(centroids):
                     if i == j:
                         continue
-                    d = math.hypot(x1 - x2, y1 - y2)
-                    if d < min_dist:
-                        min_dist = d
-                if min_dist < float("inf"):
-                    distances.append(min_dist)
-            nnd_result[cls] = sum(distances) / len(distances) if distances else 0.0
+                    d_m = math.hypot(x1 - x2, y1 - y2)  # meters in projected CRS
+                    if d_m < min_dist_m:
+                        min_dist_m = d_m
+                if min_dist_m < float("inf"):
+                    distances_km.append(min_dist_m / 1000.0)  # convert to km
+            nnd_result[cls] = sum(distances_km) / len(distances_km) if distances_km else 0.0
 
         return nnd_result
