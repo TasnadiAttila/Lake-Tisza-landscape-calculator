@@ -1,5 +1,5 @@
 from qgis.core import QgsProject
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5 import QtWidgets
 
@@ -8,6 +8,8 @@ from tisza_to_tajmetria.Metrics.MetricCollector import Metrics
 
 class ComboBoxHandler:
     ALL_NONE_TEXT = "All / None"
+    DEFAULT_FILTER_DELAY_MS = 400
+    DEFAULT_MAX_SELECTED_LABELS = 3
 
     @staticmethod
     def makeComboboxEditable(combobox):
@@ -111,17 +113,59 @@ class ComboBoxHandler:
         return diagram_combobox
 
     @staticmethod
-    def setupCommonFeatures(combobox):
+    def setupCommonFeatures(combobox, filter_delay_ms=None, max_selected_labels=None):
         ComboBoxHandler.makeComboboxEditable(combobox)
         ComboBoxHandler.keepPopupOpenOnClick(combobox)
 
-        combobox.model().itemChanged.connect(
-            lambda: ComboBoxHandler.updateLineEditText(combobox)
-        )
+        if filter_delay_ms is None:
+            filter_delay_ms = ComboBoxHandler.DEFAULT_FILTER_DELAY_MS
+        if max_selected_labels is None:
+            max_selected_labels = ComboBoxHandler.DEFAULT_MAX_SELECTED_LABELS
 
-        combobox.lineEdit().textChanged.connect(
-            lambda text: ComboBoxHandler.filterModel(combobox, text)
-        )
+        combobox.setProperty("maxSelectedLabels", max_selected_labels)
+        combobox.setProperty("filterDelayMs", filter_delay_ms)
+
+        previous_model = combobox.property("itemChangedModel")
+        previous_handler = combobox.property("itemChangedHandler")
+        if previous_model is not None and previous_handler is not None:
+            try:
+                previous_model.itemChanged.disconnect(previous_handler)
+            except Exception:
+                pass
+
+        def on_item_changed():
+            ComboBoxHandler.updateLineEditText(combobox)
+
+        combobox.model().itemChanged.connect(on_item_changed)
+        combobox.setProperty("itemChangedModel", combobox.model())
+        combobox.setProperty("itemChangedHandler", on_item_changed)
+
+        previous_text_handler = combobox.property("filterTextChangedHandler")
+        if previous_text_handler is not None:
+            try:
+                combobox.lineEdit().textChanged.disconnect(previous_text_handler)
+            except Exception:
+                pass
+
+        filter_timer = combobox.property("filterTimer")
+        if filter_timer is None:
+            filter_timer = QTimer(combobox)
+            filter_timer.setSingleShot(True)
+
+            def on_filter_timeout():
+                pending_text = combobox.property("pendingFilterText") or ""
+                ComboBoxHandler.filterModel(combobox, pending_text)
+
+            filter_timer.timeout.connect(on_filter_timeout)
+            combobox.setProperty("filterTimer", filter_timer)
+
+        def on_text_changed(text):
+            combobox.setProperty("pendingFilterText", text)
+            filter_timer.stop()
+            filter_timer.start(filter_delay_ms)
+
+        combobox.lineEdit().textChanged.connect(on_text_changed)
+        combobox.setProperty("filterTextChangedHandler", on_text_changed)
 
         ComboBoxHandler.updateLineEditText(combobox)
 
@@ -198,8 +242,24 @@ class ComboBoxHandler:
             if item and item.checkState() == Qt.Checked and item.text() != ComboBoxHandler.ALL_NONE_TEXT:
                 checked_items.append(item.text())
 
+        filter_timer = combobox.property("filterTimer")
+        if filter_timer is not None:
+            filter_timer.stop()
+            combobox.setProperty("pendingFilterText", "")
+
+        max_selected_labels = combobox.property("maxSelectedLabels")
+        if max_selected_labels is None:
+            max_selected_labels = ComboBoxHandler.DEFAULT_MAX_SELECTED_LABELS
+
+        if len(checked_items) == 0:
+            display_text = ""
+        elif len(checked_items) <= max_selected_labels:
+            display_text = ", ".join(checked_items)
+        else:
+            display_text = f"{len(checked_items)} selected"
+
         combobox.lineEdit().blockSignals(True)
-        combobox.lineEdit().setText(", ".join(checked_items))
+        combobox.lineEdit().setText(display_text)
         combobox.lineEdit().blockSignals(False)
 
     @staticmethod
