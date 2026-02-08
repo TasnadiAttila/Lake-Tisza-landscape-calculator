@@ -124,15 +124,12 @@ class TiszaToTajmetria:
             self.dlg.calculateButton.clicked.connect(self.onCalculateClicked)
             self.dlg.saveFileDialog.setFilter("Excel files (*.xlsx);")
 
-            # Combobox szerkeszthetőség
             ComboBoxHandler.makeComboboxEditable(self.dlg.layerSelector)
             ComboBoxHandler.makeComboboxEditable(self.dlg.metricSelector)
 
-            # Layer és metric combobox feltöltés
             ComboBoxHandler.loadLayersToCombobox(self.dlg.layerSelector, ['raster'])
             ComboBoxHandler.loadMetricsToCombobox(self.dlg.metricSelector)
 
-            # Alapértelmezett fájlnév üres
             self.dlg.saveFileDialog.setFilePath("")
 
         self.dlg.show()
@@ -179,16 +176,15 @@ class TiszaToTajmetria:
         return mapping
 
     def onCalculateClicked(self):
-        # Definíció: Metrika neve (ahogy a ComboBoxHandler visszaadja) -> Mértékegység
         UNIT_MAPPING = {
-            "Effective Mesh Size": "km²",  # Feltételezzük, hogy ez a CalculateEffectiveMeshSize barátságos neve
-            "Euclidean Distance": "km",  # Feltételezzük, hogy ez a CalculateEuclidean barátságos neve
+            "Effective Mesh Size": "km²",  
+            "Euclidean Distance": "km",  
             "Fractal Dimension Index": "Index (0-2)",
             "Greatest Patch Area": "km²",
             "Landscape Division": "Index (0-1)",
             "Landscape Proportion": "%",
             "Land Cover": "%",
-            "Total Landscape Area": "km²",  # LandCover-re használt becslés
+            "Total Landscape Area": "km²",  
             "Mean Patch Area": "km²",
             "Median Patch Area": "km²",
             "Nearest Neighbour Distance": "km",
