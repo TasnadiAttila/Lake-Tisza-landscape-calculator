@@ -10,11 +10,26 @@ import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 try:
-    from qgis.core import QgsRasterLayer, QgsProject
+    from qgis.core import (
+        QgsRasterLayer, 
+        QgsProject, 
+        QgsVectorLayer,
+        QgsProcessingFeedback,
+        QgsProcessingContext,
+        QgsCoordinateTransform,
+        QgsCoordinateReferenceSystem
+    )
+    import processing
 except ImportError:
     # QGIS not available (for testing)
     QgsRasterLayer = object
     QgsProject = object
+    QgsVectorLayer = object
+    QgsProcessingFeedback = object
+    QgsProcessingContext = object
+    QgsCoordinateTransform = object
+    QgsCoordinateReferenceSystem = object
+    processing = None
 
 
 class QuietHTTPRequestHandler(SimpleHTTPRequestHandler):
@@ -112,53 +127,299 @@ class GeoJSONExporter:
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5; }
-        #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100vh; }
-        .info { padding: 6px 8px; font: 14px/16px Arial, Helvetica, sans-serif; background: rgba(255,255,255,0.8); box-shadow: 0 0 15px rgba(0,0,0,0.2); border-radius: 5px; }
-        .info h4 { margin: 0 0 5px 0; color: #08519c; font-weight: bold; }
-        .info p { margin: 5px 0; font-size: 13px; color: #333; }
-        .panel-wrap { position: fixed; top: 10px; left: 10px; right: 10px; z-index: 1000; display: flex; gap: 12px; align-items: flex-start; }
-        .panel { padding: 12px 14px; background: rgba(255,255,255,0.95); box-shadow: 0 0 15px rgba(0,0,0,0.2); border-radius: 5px; width: 320px; max-height: 80vh; overflow: auto; }
-        .panel.results { width: 520px; overflow-x: auto; overflow-y: auto; }
-        .panel h2 { margin: 10px 0 6px 0; font-size: 14px; color: #08519c; }
-        .panel .actions { display: flex; gap: 6px; margin-bottom: 6px; }
-        .panel button { font-size: 11px; padding: 4px 8px; border: 1px solid #c9c9c9; background: #f7f7f7; border-radius: 4px; cursor: pointer; }
-        .panel button:hover { background: #efefef; }
-        .panel .option { display: flex; align-items: center; margin: 4px 0; font-size: 12px; color: #333; }
-        .panel .option input { margin-right: 6px; }
-        .panel .summary { margin-top: 8px; font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 6px; }
-        .panel .empty { font-style: italic; color: #888; }
-        .panel .details { margin-top: 8px; font-size: 12px; color: #333; border-top: 1px solid #ddd; padding-top: 6px; }
-        .panel .details .label { font-weight: bold; margin-bottom: 4px; color: #08519c; }
-        .panel .details table { width: 100%; border-collapse: collapse; font-size: 11px; }
-        .panel .details th, .panel .details td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; }
-        .panel .details th { background: #f2f6fb; color: #08519c; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background-color: #f5f5f5; 
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* Sidebar for filters */
+        #sidebar {
+            width: 350px;
+            background: #ffffff;
+            border-right: 2px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        #sidebar-header {
+            background: linear-gradient(135deg, #08519c 0%, #3182bd 100%);
+            color: white;
+            padding: 15px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        #sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+        
+        .filter-section {
+            padding: 15px 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .filter-section h2 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #08519c;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        
+        .filter-section .actions {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        
+        .filter-section button {
+            font-size: 11px;
+            padding: 5px 10px;
+            border: 1px solid #3182bd;
+            background: #ffffff;
+            color: #3182bd;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .filter-section button:hover {
+            background: #3182bd;
+            color: white;
+        }
+        
+        .option {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+            font-size: 13px;
+            color: #333;
+            padding: 4px 0;
+        }
+        
+        .option input {
+            margin-right: 8px;
+            cursor: pointer;
+        }
+        
+        .option:hover {
+            background: #f8f9fa;
+        }
+
+        .color-select {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #c9c9c9;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #333;
+            background: #ffffff;
+        }
+        
+        .summary {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .empty {
+            font-style: italic;
+            color: #999;
+            font-size: 12px;
+        }
+        
+        /* Map container */
+        #map-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        
+        #map {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Results panel at bottom of map */
+        #results-panel {
+            background: white;
+            border-top: 2px solid #ddd;
+            max-height: 40vh;
+            overflow: auto;
+            display: none;
+        }
+        
+        #results-panel.has-results {
+            display: block;
+        }
+        
+        .details {
+            padding: 15px 20px;
+        }
+        
+        .details .label {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #08519c;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+        
+        .details table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        
+        .details th,
+        .details td {
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            text-align: left;
+        }
+        
+        .details th {
+            background: #f2f6fb;
+            color: #08519c;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        
+        .details tbody tr:hover {
+            background: #f8f9fa;
+        }
+        
+        /* Popup info */
+        .info {
+            padding: 8px 10px;
+            font: 14px/16px Arial, Helvetica, sans-serif;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+        }
+        
+        .info h4 {
+            margin: 0 0 8px 0;
+            color: #08519c;
+            font-weight: bold;
+        }
+        
+        .info p {
+            margin: 5px 0;
+            font-size: 13px;
+            color: #333;
+        }
+        
+        /* Legend */
+        .legend {
+            line-height: 18px;
+            color: #555;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 10px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+        }
+        
+        .legend h4 {
+            margin: 0 0 8px 0;
+            color: #08519c;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.8;
+        }
+        
+        .legend .legend-item {
+            font-size: 11px;
+            margin: 3px 0;
+            clear: both;
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
     </style>
 </head>
 <body>
-    <div id="map"></div>
-    
-    <div class="panel-wrap">
-        <div class="panel">
-            <h2>Layers</h2>
-            <div class="actions">
-                <button type="button" id="layers-all">Select all</button>
-                <button type="button" id="layers-none">Clear all</button>
+    <!-- Sidebar for filters -->
+    <div id="sidebar">
+        <div id="sidebar-header">Lake Tisza Metrics</div>
+        <div id="sidebar-content">
+            <div class="filter-section">
+                <h2>Layers</h2>
+                <div class="actions">
+                    <button type="button" id="layers-all">Select All</button>
+                    <button type="button" id="layers-none">Clear All</button>
+                </div>
+                <div id="layer-list" class="option-list"></div>
             </div>
-            <div id="layer-list" class="option-list"></div>
-            <h2>Metrics</h2>
-            <div class="actions">
-                <button type="button" id="metrics-all">Select all</button>
-                <button type="button" id="metrics-none">Clear all</button>
+            
+            <div class="filter-section">
+                <h2>Metrics</h2>
+                <div class="actions">
+                    <button type="button" id="metrics-all">Select All</button>
+                    <button type="button" id="metrics-none">Clear All</button>
+                </div>
+                <div id="metric-list" class="option-list"></div>
             </div>
-            <div id="metric-list" class="option-list"></div>
-            <div class="summary" id="panel-summary"></div>
-        </div>
 
-        <div class="panel results" id="selection-details">
+            <div class="filter-section">
+                <h2>Map Coloring</h2>
+                <select id="color-metric-select" class="color-select"></select>
+            </div>
+            
+            <div class="filter-section">
+                <div class="summary" id="panel-summary"></div>
+            </div>
+            
+            <div class="filter-section" id="layer-summary-section" style="display:none; border-top: 2px solid #08519c;">
+                <h2>Selected Layer Metrics</h2>
+                <div id="layer-summary-content" style="font-size: 12px;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Map container -->
+    <div id="map-container">
+        <div id="map"></div>
+        <div id="results-panel">
             <div class="details">
-                <div class="label">Selected values</div>
-                <div class="empty">Select at least one layer and one metric.</div>
+                <div class="label">Patch Details</div>
+                <div class="empty">Select layers to see individual patches.</div>
             </div>
         </div>
     </div>
@@ -173,6 +434,89 @@ class GeoJSONExporter:
         
         var geojsonFeature = GEOJSON_PLACEHOLDER;
         var geojsonLayer = null;
+        var legendControl = null;
+
+        function getColor(value, min, max) {
+            if (value === null || value === undefined || isNaN(value)) {
+                return '#cccccc';
+            }
+            if (min === max) {
+                return '#fee08b';
+            }
+            var normalized = (value - min) / (max - min);
+            var colors = [
+                '#ffffcc',
+                '#ffeda0',
+                '#fed976',
+                '#feb24c',
+                '#fd8d3c',
+                '#fc4e2a',
+                '#e31a1c',
+                '#bd0026'
+            ];
+            var index = Math.floor(normalized * (colors.length - 1));
+            index = Math.max(0, Math.min(colors.length - 1, index));
+            return colors[index];
+        }
+
+        function getMetricValueRange(selectedLayers, metricName) {
+            var values = [];
+            if (!geojsonFeature || !geojsonFeature.features || !metricName) {
+                return { min: 0, max: 0 };
+            }
+            for (var i = 0; i < geojsonFeature.features.length; i++) {
+                var feature = geojsonFeature.features[i];
+                var props = feature.properties || {};
+                if (selectedLayers.length && selectedLayers.indexOf(props.layer_name) === -1) {
+                    continue;
+                }
+                var value = null;
+                
+                // Check for patch_area first if that's the metric
+                if (metricName === 'Patch Area (km²)' && props.patch_area) {
+                    value = props.patch_area;
+                } else {
+                    var metrics = normalizeMetrics(props);
+                    if (Object.prototype.hasOwnProperty.call(metrics, metricName)) {
+                        value = parseFloat(metrics[metricName]);
+                    }
+                }
+                
+                if (value !== null && !isNaN(value)) {
+                    values.push(value);
+                }
+            }
+            if (!values.length) {
+                return { min: 0, max: 0 };
+            }
+            return { min: Math.min.apply(null, values), max: Math.max.apply(null, values) };
+        }
+
+        function createLegend(metricName, min, max) {
+            if (legendControl) {
+                map.removeControl(legendControl);
+                legendControl = null;
+            }
+            if (!metricName || min === max) {
+                return;
+            }
+            
+            legendControl = L.control({ position: 'bottomright' });
+            legendControl.onAdd = function(map) {
+                var div = L.DomUtil.create('div', 'legend');
+                div.innerHTML = '<h4>' + metricName + '</h4>';
+                var steps = 8;
+                for (var i = steps - 1; i >= 0; i--) {
+                    var value = min + (max - min) * i / (steps - 1);
+                    var color = getColor(value, min, max);
+                    div.innerHTML +=
+                        '<div class="legend-item"><i style="background:' + color + '"></i> ' +
+                        value.toFixed(2) + '</div>';
+                }
+                return div;
+            };
+            legendControl.addTo(map);
+        }
 
         function normalizeMetrics(props) {
             if (props.metrics_map) {
@@ -247,6 +591,28 @@ class GeoJSONExporter:
             });
         }
 
+        function renderColorMetricSelector(values) {
+            var select = document.getElementById('color-metric-select');
+            if (!select) { return; }
+            select.innerHTML = '';
+
+            var options = ['Patch Area (km²)'].concat(values || []);
+            for (var i = 0; i < options.length; i++) {
+                var option = document.createElement('option');
+                option.value = options[i];
+                option.textContent = options[i];
+                select.appendChild(option);
+            }
+        }
+
+        function getColorMetric() {
+            var select = document.getElementById('color-metric-select');
+            if (!select || !select.value) {
+                return 'Patch Area (km²)';
+            }
+            return select.value;
+        }
+
         function setAllOptions(containerId, checked) {
             var container = document.getElementById(containerId);
             if (!container) { return; }
@@ -299,71 +665,151 @@ class GeoJSONExporter:
         function updateSummary(selectedLayers, selectedMetrics) {
             var layerText = selectedLayers.length ? selectedLayers.length + ' layer(s)' : 'no layers';
             var metricText = selectedMetrics.length ? selectedMetrics.length + ' metric(s)' : 'no metrics';
-            var summary = layerText + ', ' + metricText;
+            var summary = 'Showing ' + layerText + ', ' + metricText + '.';
+            
+            // Add which metric is being used for coloring
+            if (selectedLayers.length > 0) {
+                var colorMetric = getColorMetric();
+                summary += '<br><strong>Map colors by:</strong> ' + colorMetric;
+            }
+            
             var panelSummary = document.getElementById('panel-summary');
-            if (panelSummary) { panelSummary.textContent = 'Showing ' + summary + '.'; }
+            if (panelSummary) { panelSummary.innerHTML = summary; }
+            
+            // Update layer summary section
+            var layerSummarySection = document.getElementById('layer-summary-section');
+            var layerSummaryContent = document.getElementById('layer-summary-content');
+            
+            if (selectedLayers.length > 0 && selectedMetrics.length > 0) {
+                layerSummarySection.style.display = 'block';
+                
+                var summaryHtml = '';
+                for (var i = 0; i < selectedLayers.length; i++) {
+                    var layerName = selectedLayers[i];
+                    summaryHtml += '<div style="margin-bottom: 12px; padding: 8px; background: #f8f9fa; border-radius: 4px;">';
+                    summaryHtml += '<strong style="color: #08519c;">' + layerName + '</strong><br>';
+                    
+                    // Find this layer's metrics
+                    var layerFound = false;
+                    for (var j = 0; j < geojsonFeature.features.length; j++) {
+                        var feature = geojsonFeature.features[j];
+                        var props = feature.properties || {};
+                        if (props.layer_name === layerName) {
+                            var metrics = normalizeMetrics(props);
+                            
+                            for (var k = 0; k < selectedMetrics.length; k++) {
+                                var metricName = selectedMetrics[k];
+                                if (Object.prototype.hasOwnProperty.call(metrics, metricName)) {
+                                    summaryHtml += '<span style="color: #666;">' + metricName + ':</span> <strong>' + metrics[metricName] + '</strong><br>';
+                                }
+                            }
+                            layerFound = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!layerFound) {
+                        summaryHtml += '<span style="color: #999; font-style: italic;">No metrics found</span>';
+                    }
+                    
+                    summaryHtml += '</div>';
+                }
+                
+                layerSummaryContent.innerHTML = summaryHtml;
+            } else {
+                layerSummarySection.style.display = 'none';
+            }
         }
 
         function updateDetails(selectedLayers, selectedMetrics) {
-            var details = document.getElementById('selection-details');
-            if (!details) { return; }
-            if (!selectedLayers.length || !selectedMetrics.length) {
-                details.innerHTML = '<div class="details"><div class="label">Selected values</div>' +
-                    '<div class="empty">Select at least one layer and one metric.</div></div>';
+            var panel = document.getElementById('results-panel');
+            if (!panel) { return; }
+            if (!selectedLayers.length) {
+                panel.innerHTML = '<div class="details"><div class="label">Patch Details</div>' +
+                    '<div class="empty">Select at least one layer to see patch details.</div></div>';
+                panel.classList.remove('has-results');
                 return;
+            }
+
+            // Build metrics to display (include Patch Area by default)
+            var metricsToShow = ['Patch Area (km²)'];
+            for (var m = 0; m < selectedMetrics.length; m++) {
+                if (selectedMetrics[m] !== 'Patch Area (km²)') {
+                    metricsToShow.push(selectedMetrics[m]);
+                }
             }
 
             var rows = [];
-            var headerCells = '<th>Layer</th>';
-            for (var m = 0; m < selectedMetrics.length; m++) {
-                headerCells += '<th>' + selectedMetrics[m] + '</th>';
+            var headerCells = '<th>Layer</th><th>Patch #</th>';
+            for (var h = 0; h < metricsToShow.length; h++) {
+                headerCells += '<th>' + metricsToShow[h] + '</th>';
             }
 
-            for (var i = 0; i < selectedLayers.length; i++) {
-                var layerName = selectedLayers[i];
-                var match = null;
-                for (var j = 0; j < geojsonFeature.features.length; j++) {
-                    var feature = geojsonFeature.features[j];
-                    var props = feature.properties || {};
-                    if (props.layer_name === layerName) {
-                        match = props;
-                        break;
-                    }
+            // Group features by layer
+            var layerPatches = {};
+            for (var i = 0; i < geojsonFeature.features.length; i++) {
+                var feature = geojsonFeature.features[i];
+                var props = feature.properties || {};
+                var layerName = props.layer_name;
+                
+                if (selectedLayers.indexOf(layerName) === -1) {
+                    continue;
+                }
+                
+                if (!layerPatches[layerName]) {
+                    layerPatches[layerName] = [];
+                }
+                layerPatches[layerName].push(props);
+            }
+
+            for (var l = 0; l < selectedLayers.length; l++) {
+                var layerName = selectedLayers[l];
+                var patches = layerPatches[layerName] || [];
+                
+                if (patches.length === 0) {
+                    continue;
                 }
 
-                if (!match) { continue; }
-                var metrics = normalizeMetrics(match);
-                var rowCells = '<td>' + layerName + '</td>';
-                for (var k = 0; k < selectedMetrics.length; k++) {
-                    var metricName = selectedMetrics[k];
-                    var hasMetric = Object.prototype.hasOwnProperty.call(metrics, metricName);
-                    var value = hasMetric ? metrics[metricName] : '-';
-                    rowCells += '<td>' + value + '</td>';
+                for (var p = 0; p < patches.length; p++) {
+                    var props = patches[p];
+                    var metrics = normalizeMetrics(props);
+                    
+                    var rowCells = '<td>' + layerName + '</td>';
+                    rowCells += '<td>' + (p + 1) + '</td>';
+                    
+                    for (var k = 0; k < metricsToShow.length; k++) {
+                        var metricName = metricsToShow[k];
+                        var value = '-';
+                        
+                        if (metricName === 'Patch Area (km²)' && props.patch_area) {
+                            value = props.patch_area.toFixed(4);
+                        } else if (Object.prototype.hasOwnProperty.call(metrics, metricName)) {
+                            value = metrics[metricName];
+                        }
+                        
+                        rowCells += '<td>' + value + '</td>';
+                    }
+                    rows.push('<tr>' + rowCells + '</tr>');
                 }
-                rows.push('<tr>' + rowCells + '</tr>');
             }
 
             if (!rows.length) {
-                details.innerHTML = '<div class="details"><div class="label">Selected values</div>' +
-                    '<div class="empty">No matching layer found.</div></div>';
+                panel.innerHTML = '<div class="details"><div class="label">Patch Details</div>' +
+                    '<div class="empty">No patches found for selected layers.</div></div>';
+                panel.classList.remove('has-results');
                 return;
             }
 
-            details.innerHTML = '<div class="details"><div class="label">Selected values</div>' +
+            var summary = '<div style="margin-top:10px; padding-top:10px; border-top:1px solid #e0e0e0; font-size:12px; color:#666;">Total: ' + rows.length + ' patch(es)</div>';
+            
+            panel.innerHTML = '<div class="details"><div class="label">Patch Details</div>' +
                 '<table><thead><tr>' + headerCells + '</tr></thead>' +
-                '<tbody>' + rows.join('') + '</tbody></table></div>';
+                '<tbody>' + rows.join('') + '</tbody></table>' + summary + '</div>';
+            panel.classList.add('has-results');
         }
 
         function updateResultsWidth(selectedMetrics) {
-            var panel = document.getElementById('selection-details');
-            if (!panel) { return; }
-            var count = selectedMetrics.length || 0;
-            var baseWidth = 360;
-            var perMetric = 120;
-            var desired = baseWidth + (count * perMetric);
-            var maxWidth = Math.max(360, window.innerWidth - 380);
-            var width = Math.min(desired, maxWidth);
-            panel.style.width = width + 'px';
+            // No longer needed with new layout - results panel takes full width
         }
 
         function updateUrl(selectedLayers, selectedMetrics) {
@@ -424,24 +870,67 @@ class GeoJSONExporter:
             updateSummary(selectedLayers, selectedMetrics);
             updateUrl(selectedLayers, selectedMetrics);
             updateDetails(selectedLayers, selectedMetrics);
-            updateResultsWidth(selectedMetrics);
 
             if (geojsonLayer) {
                 map.removeLayer(geojsonLayer);
             }
 
             var filtered = buildFilteredFeatureCollection(selectedLayers);
+            
+            // Use the selected metric for coloring, or default to Patch Area
+            var colorMetric = getColorMetric();
+            var range = getMetricValueRange(selectedLayers, colorMetric);
+            
+            if (range.min !== range.max) {
+                createLegend(colorMetric, range.min, range.max);
+            } else {
+                if (legendControl) {
+                    map.removeControl(legendControl);
+                    legendControl = null;
+                }
+            }
+            
             geojsonLayer = L.geoJSON(filtered, {
                 style: function(feature) {
-                    return { color: '#08519c', weight: 2, opacity: 0.65, fillColor: '#08519c', fillOpacity: 0.1 };
+                    var fillColor = '#08519c';
+                    var props = feature.properties || {};
+                    var metrics = normalizeMetrics(props);
+                    
+                    // Try to get the color metric value
+                    var value = null;
+                    if (Object.prototype.hasOwnProperty.call(metrics, colorMetric)) {
+                        value = parseFloat(metrics[colorMetric]);
+                    } else if (props.patch_area && colorMetric === 'Patch Area (km²)') {
+                        value = props.patch_area;
+                    }
+                    
+                    if (value !== null && !isNaN(value) && range.min !== range.max) {
+                        fillColor = getColor(value, range.min, range.max);
+                    }
+                    
+                    return { 
+                        color: '#333', 
+                        weight: 1.5, 
+                        opacity: 0.8, 
+                        fillColor: fillColor, 
+                        fillOpacity: 0.7 
+                    };
                 },
                 onEachFeature: function(feature, layer) {
                     var props = feature.properties || {};
                     var metrics = normalizeMetrics(props);
                     var metricsHtml = buildMetricsHtml(metrics, selectedMetrics);
+                    
+                    // Add patch area if available
+                    var patchInfo = '';
+                    if (props.patch_area) {
+                        patchInfo = '<div><strong>Patch Area:</strong> ' + props.patch_area.toFixed(4) + ' km²</div>';
+                    }
+                    
                     var popupContent = '<div class="info">' +
                         '<h4>' + (props.layer_name || 'Layer') + '</h4>' +
                         '<div><strong>CRS:</strong> ' + (props.crs || '-') + '</div>' +
+                        patchInfo +
                         '<div style="margin-top:6px;">' + metricsHtml + '</div></div>';
                     layer.bindPopup(popupContent);
                 }
@@ -458,6 +947,7 @@ class GeoJSONExporter:
         var metricNames = collectMetricNames();
         renderOptions('layer-list', layerNames, 'layer_');
         renderOptions('metric-list', metricNames, 'metric_');
+        renderColorMetricSelector(metricNames);
         applyInitialSelections();
         document.getElementById('layers-all').addEventListener('click', function() {
             setAllOptions('layer-list', true);
@@ -471,6 +961,7 @@ class GeoJSONExporter:
         document.getElementById('metrics-none').addEventListener('click', function() {
             setAllOptions('metric-list', false);
         });
+        document.getElementById('color-metric-select').addEventListener('change', updateMap);
         updateMap();
         L.control.scale().addTo(map);
     </script>
@@ -502,6 +993,103 @@ class GeoJSONExporter:
             return None, None
 
     @staticmethod
+    def vectorize_raster_patches(layer):
+        """
+        Vectorize raster to extract individual patch geometries
+        
+        Args:
+            layer: QgsRasterLayer object
+            
+        Returns:
+            list: List of dictionaries with 'geometry' and 'area' keys
+        """
+        try:
+            if processing is None:
+                print("[vectorize_raster_patches] QGIS processing not available")
+                return []
+            
+            feedback = QgsProcessingFeedback()
+            context = QgsProcessingContext()
+            
+            temp_folder = os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp")
+            if not os.path.exists(temp_folder):
+                os.makedirs(temp_folder)
+            
+            polygon_output = os.path.join(temp_folder, f"temp_vectorize_{layer.name()}.gpkg")
+            
+            print(f"[vectorize_raster_patches] Vectorizing layer: {layer.name()}")
+            
+            # Vectorize raster to polygons
+            processing.run(
+                "gdal:polygonize",
+                {
+                    'INPUT': layer.source(),
+                    'BAND': 1,
+                    'FIELD': 'VALUE',
+                    'EIGHT_CONNECTEDNESS': False,
+                    'OUTPUT': polygon_output
+                },
+                feedback=feedback,
+                context=context
+            )
+            
+            polygon_layer = QgsVectorLayer(polygon_output, "temp_polygons", "ogr")
+            if not polygon_layer.isValid():
+                print(f"[vectorize_raster_patches] Invalid polygon layer")
+                return []
+            
+            # Get nodata value
+            provider = layer.dataProvider()
+            nodata = provider.sourceNoDataValue(1)
+            
+            # Extract patches with their geometries
+            patches = []
+            source_crs = polygon_layer.crs()
+            target_crs = QgsCoordinateReferenceSystem("EPSG:4326")
+            transform = QgsCoordinateTransform(source_crs, target_crs, QgsProject.instance())
+            
+            for feature in polygon_layer.getFeatures():
+                value = feature["VALUE"]
+                
+                # Skip nodata and background (0 or negative)
+                if nodata is not None and value == nodata:
+                    continue
+                if value <= 0:
+                    continue
+                
+                geom = feature.geometry()
+                if geom and not geom.isEmpty():
+                    # Transform to WGS84
+                    geom.transform(transform)
+                    area_km2 = feature.geometry().area() / 1e6  # Original area in km²
+                    
+                    # Convert geometry to GeoJSON format
+                    geom_json = json.loads(geom.asJson())
+                    
+                    patches.append({
+                        'geometry': geom_json,
+                        'area': area_km2,
+                        'class_value': value
+                    })
+            
+            print(f"[vectorize_raster_patches] Extracted {len(patches)} patches from {layer.name()}")
+            
+            # Clean up temp file
+            try:
+                if os.path.exists(polygon_output):
+                    os.remove(polygon_output)
+            except:
+                pass
+            
+            return patches
+            
+        except Exception as e:
+            print(f"[vectorize_raster_patches] Error: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    @staticmethod
     def export_and_generate_map(layers, metric_data, output_dir):
         """
         Export layers with metric data to GeoJSON and generate web map
@@ -531,36 +1119,72 @@ class GeoJSONExporter:
             crs_info = "EPSG:4326"
             
             for layer in layers:
-                extent = layer.extent()
+                print(f"[export_and_generate_map] Processing layer: {layer.name()}")
+                
                 crs = layer.crs()
                 if crs:
                     crs_info = crs.authid() if crs.authid() else "EPSG:4326"
                 
                 # Get metric info for this layer
                 layer_metrics = metric_data.get(layer.name(), {})
-                metric_desc = ", ".join([f"{k}: {v}" for k, v in layer_metrics.items()])
                 
-                feature = {
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "Polygon",
-                        "coordinates": [[
-                            [extent.xMinimum(), extent.yMinimum()],
-                            [extent.xMaximum(), extent.yMinimum()],
-                            [extent.xMaximum(), extent.yMaximum()],
-                            [extent.xMinimum(), extent.yMaximum()],
-                            [extent.xMinimum(), extent.yMinimum()]
-                        ]]
-                    },
-                    "properties": {
-                        "layer_name": layer.name(),
-                        "metrics": metric_desc,
-                        "metrics_map": layer_metrics,
-                        "metrics_list": list(layer_metrics.keys()),
-                        "crs": crs_info
+                # Vectorize raster to get patch geometries
+                patches = GeoJSONExporter.vectorize_raster_patches(layer)
+                
+                if patches:
+                    # Create a feature for each patch
+                    for patch in patches:
+                        # Create metrics map for this patch
+                        patch_metrics = {
+                            "Patch Area (km²)": round(patch['area'], 4)
+                        }
+                        # Add layer-level metrics for reference
+                        for metric_name, metric_value in layer_metrics.items():
+                            patch_metrics[f"Layer {metric_name}"] = metric_value
+                        
+                        metric_desc = ", ".join([f"{k}: {v}" for k, v in patch_metrics.items()])
+                        
+                        feature = {
+                            "type": "Feature",
+                            "geometry": patch['geometry'],
+                            "properties": {
+                                "layer_name": layer.name(),
+                                "patch_area": patch['area'],
+                                "class_value": patch['class_value'],
+                                "metrics": metric_desc,
+                                "metrics_map": patch_metrics,
+                                "metrics_list": list(patch_metrics.keys()),
+                                "crs": crs_info
+                            }
+                        }
+                        features.append(feature)
+                else:
+                    # Fallback to bounding box if vectorization fails
+                    print(f"[export_and_generate_map] No patches extracted, using bounding box for {layer.name()}")
+                    extent = layer.extent()
+                    metric_desc = ", ".join([f"{k}: {v}" for k, v in layer_metrics.items()])
+                    
+                    feature = {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[
+                                [extent.xMinimum(), extent.yMinimum()],
+                                [extent.xMaximum(), extent.yMinimum()],
+                                [extent.xMaximum(), extent.yMaximum()],
+                                [extent.xMinimum(), extent.yMaximum()],
+                                [extent.xMinimum(), extent.yMinimum()]
+                            ]]
+                        },
+                        "properties": {
+                            "layer_name": layer.name(),
+                            "metrics": metric_desc,
+                            "metrics_map": layer_metrics,
+                            "metrics_list": list(layer_metrics.keys()),
+                            "crs": crs_info
+                        }
                     }
-                }
-                features.append(feature)
+                    features.append(feature)
             
             # Create FeatureCollection
             geojson_data = {
