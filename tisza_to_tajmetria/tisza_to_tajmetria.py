@@ -35,7 +35,9 @@ from .tisza_to_tajmetria_dialog import TiszaToTajmetriaDialog
 # Import helpers
 from .Controllers.ComboBoxHandler import ComboBoxHandler
 from .Controllers.ExcelHelper import ExcelHelper
+from .Controllers.GeoJSONExporter import GeoJSONExporter
 import os.path
+import webbrowser
 
 
 class TiszaToTajmetria:
@@ -122,6 +124,7 @@ class TiszaToTajmetria:
             self.dlg = TiszaToTajmetriaDialog()
 
             self.dlg.calculateButton.clicked.connect(self.onCalculateClicked)
+            self.dlg.exportButton.clicked.connect(self.onExportClicked)
             self.dlg.saveFileDialog.setFilter("Excel files (*.xlsx);")
 
             ComboBoxHandler.makeComboboxEditable(self.dlg.layerSelector)
@@ -131,6 +134,18 @@ class TiszaToTajmetria:
             ComboBoxHandler.loadMetricsToCombobox(self.dlg.metricSelector)
 
             self.dlg.saveFileDialog.setFilePath("")
+            
+            # Connect checkbox model signals to update button state
+            self.dlg.layerSelector.model().dataChanged.connect(self.updateExportButtonState)
+            self.dlg.layerSelector.model().rowsInserted.connect(self.updateExportButtonState)
+            self.dlg.layerSelector.model().rowsRemoved.connect(self.updateExportButtonState)
+            
+            self.dlg.metricSelector.model().dataChanged.connect(self.updateExportButtonState)
+            self.dlg.metricSelector.model().rowsInserted.connect(self.updateExportButtonState)
+            self.dlg.metricSelector.model().rowsRemoved.connect(self.updateExportButtonState)
+            
+            # Initial button state
+            self.updateExportButtonState()
 
         self.dlg.show()
         self.dlg.exec_()
@@ -633,4 +648,140 @@ class TiszaToTajmetria:
                 f"An unexpected error occurred while writing to Excel: {str(e)}",
                 level=Qgis.Critical,
                 duration=10
+            )
+
+    def updateExportButtonState(self):
+        """Enable export button only if at least one layer and one metric are selected"""
+        selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
+        selected_metrics = ComboBoxHandler.getCheckedItems(self.dlg.metricSelector)
+        
+        # Enable button only if both layers and metrics are selected
+        is_enabled = len(selected_layers) > 0 and len(selected_metrics) > 0
+        self.dlg.exportButton.setEnabled(is_enabled)
+
+    def onExportClicked(self):
+        """Handle export button click - save Excel and generate GeoJSON + web map"""
+        
+        # Get output path for Excel (reuse same path)
+        output_path = self.dlg.saveFileDialog.filePath()
+        
+        if not output_path:
+            self.iface.messageBar().pushMessage(
+                "Error",
+                "Please select an output file path first!",
+                level=Qgis.Warning,
+                duration=5
+            )
+            return
+        
+        # Ensure .xlsx extension
+        if not output_path.lower().endswith('.xlsx'):
+            output_path += '.xlsx'
+        
+        selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
+        if not selected_layers:
+            self.iface.messageBar().pushMessage(
+                "Error",
+                "No layer selected!",
+                level=Qgis.Warning,
+                duration=3
+            )
+            return
+
+        selected_metrics = ComboBoxHandler.getCheckedItems(self.dlg.metricSelector)
+        if not selected_metrics:
+            self.iface.messageBar().pushMessage(
+                "Error",
+                "No metric selected!",
+                level=Qgis.Warning,
+                duration=3
+            )
+            return
+
+        # Step 1: Create Excel file with metrics
+        self.iface.messageBar().pushMessage(
+            "Info",
+            "Exporting data to Excel and generating maps...",
+            level=Qgis.Info,
+            duration=3
+        )
+        
+        # Prepare metric data for each layer
+        metric_data = {}
+        UNIT_MAPPING = {
+            "Effective Mesh Size": "km²",  
+            "Euclidean Distance": "km",  
+            "Fractal Dimension Index": "Index (0-2)",
+            "Greatest Patch Area": "km²",
+            "Landscape Division": "Index (0-1)",
+            "Landscape Proportion": "%",
+            "Land Cover": "%",
+            "Total Landscape Area": "km²",  
+            "Mean Patch Area": "km²",
+            "Median Patch Area": "km²",
+            "Nearest Neighbour Distance": "km",
+            "Number of Patches": "patches",
+            "Patch Cohesion Index": "Index (0-100)",
+            "Patch Density": "patches/km²",
+            "Smallest Patch Area": "km²",
+            "Splitting Index": "Index (Dim.less)",
+        }
+        
+        # Collect metrics for each layer
+        for layer in selected_layers:
+            layer_metrics = {}
+            for metric_func, metric_name in selected_metrics:
+                try:
+                    value = metric_func(layer)
+                    if isinstance(value, dict):
+                        # For dict metrics, take first key-value pair as representative
+                        first_key = next(iter(value.keys()))
+                        layer_metrics[metric_name] = f"{value[first_key]:.2f}"
+                    elif isinstance(value, (int, float)):
+                        layer_metrics[metric_name] = f"{value:.2f}"
+                    else:
+                        layer_metrics[metric_name] = str(value)
+                except Exception as e:
+                    layer_metrics[metric_name] = f"Error: {str(e)}"
+            
+            metric_data[layer.name()] = layer_metrics
+        
+        # Step 2: Export to GeoJSON and generate web map
+        try:
+            # Get directory from output path
+            output_dir = os.path.dirname(output_path) or "."
+            
+            geojson_path, html_url = GeoJSONExporter.export_and_generate_map(
+                selected_layers,
+                metric_data,
+                output_dir
+            )
+            
+            if geojson_path and html_url:
+                self.iface.messageBar().pushMessage(
+                    "Success",
+                    f"Data exported successfully!\nGeoJSON: {os.path.basename(geojson_path)}\nMap: {html_url}",
+                    level=Qgis.Success,
+                    duration=10
+                )
+                
+                # Open web map in browser via local server
+                try:
+                    webbrowser.open(html_url)
+                except Exception as e:
+                    print(f"Could not open map in browser: {e}")
+            else:
+                self.iface.messageBar().pushMessage(
+                    "Error",
+                    "Failed to generate GeoJSON or web map!",
+                    level=Qgis.Critical,
+                    duration=5
+                )
+        
+        except Exception as e:
+            self.iface.messageBar().pushMessage(
+                "Error",
+                f"Export failed: {str(e)}",
+                level=Qgis.Critical,
+                duration=5
             )

@@ -90,6 +90,14 @@
      <string>Calculate</string>
     </property>
    </widget>
+   <widget class="QPushButton" name="exportButton">
+    <property name="enabled">
+     <bool>false</bool>
+    </property>
+    <property name="text">
+     <string>Export</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QSplitter" name="splitter_2">
    <property name="enabled">
