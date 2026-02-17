@@ -436,24 +436,42 @@ class GeoJSONExporter:
         var geojsonLayer = null;
         var legendControl = null;
 
-        function getColor(value, min, max) {
+        function getPalette(metricName) {
+            var palettes = {
+                'Patch Area (km²)': ['#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#005a32'],
+                'Effective Mesh Size': ['#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#005a32'],
+                'Greatest Patch Area': ['#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#005a32'],
+                'Mean Patch Area': ['#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#005a32'],
+                'Median Patch Area': ['#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#005a32'],
+                'Smallest Patch Area': ['#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#005a32'],
+                'Total Landscape Area': ['#f7fcf5', '#e5f5e0', '#c7e9c0', '#a1d99b', '#74c476', '#41ab5d', '#238b45', '#005a32'],
+                'Euclidean Distance': ['#f7fbff', '#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#084594'],
+                'Nearest Neighbour Distance': ['#f7fbff', '#deebf7', '#c6dbef', '#9ecae1', '#6baed6', '#4292c6', '#2171b5', '#084594'],
+                'Patch Density': ['#fff5eb', '#fee6ce', '#fdd0a2', '#fdae6b', '#fd8d3c', '#f16913', '#d94801', '#8c2d04'],
+                'Number of Patches': ['#fff5eb', '#fee6ce', '#fdd0a2', '#fdae6b', '#fd8d3c', '#f16913', '#d94801', '#8c2d04'],
+                'Landscape Proportion': ['#f7fcfd', '#e0ecf4', '#bfd3e6', '#9ebcda', '#8c96c6', '#8c6bb1', '#88419d', '#6e016b'],
+                'Land Cover': ['#f7fcfd', '#e0ecf4', '#bfd3e6', '#9ebcda', '#8c96c6', '#8c6bb1', '#88419d', '#6e016b'],
+                'Fractal Dimension Index': ['#f7f4f9', '#e7e1ef', '#d4b9da', '#c994c7', '#df65b0', '#e7298a', '#ce1256', '#91003f'],
+                'Landscape Division': ['#f7f4f9', '#e7e1ef', '#d4b9da', '#c994c7', '#df65b0', '#e7298a', '#ce1256', '#91003f'],
+                'Patch Cohesion Index': ['#f7f4f9', '#e7e1ef', '#d4b9da', '#c994c7', '#df65b0', '#e7298a', '#ce1256', '#91003f'],
+                'Splitting Index': ['#f7f4f9', '#e7e1ef', '#d4b9da', '#c994c7', '#df65b0', '#e7298a', '#ce1256', '#91003f']
+            };
+            var fallback = ['#ffffcc', '#ffeda0', '#fed976', '#feb24c', '#fd8d3c', '#fc4e2a', '#e31a1c', '#bd0026'];
+            if (metricName && Object.prototype.hasOwnProperty.call(palettes, metricName)) {
+                return palettes[metricName];
+            }
+            return fallback;
+        }
+
+        function getColor(value, min, max, metricName) {
             if (value === null || value === undefined || isNaN(value)) {
                 return '#cccccc';
             }
+            var colors = getPalette(metricName);
             if (min === max) {
-                return '#fee08b';
+                return colors[Math.floor(colors.length / 2)];
             }
             var normalized = (value - min) / (max - min);
-            var colors = [
-                '#ffffcc',
-                '#ffeda0',
-                '#fed976',
-                '#feb24c',
-                '#fd8d3c',
-                '#fc4e2a',
-                '#e31a1c',
-                '#bd0026'
-            ];
             var index = Math.floor(normalized * (colors.length - 1));
             index = Math.max(0, Math.min(colors.length - 1, index));
             return colors[index];
@@ -508,7 +526,7 @@ class GeoJSONExporter:
                 var steps = 8;
                 for (var i = steps - 1; i >= 0; i--) {
                     var value = min + (max - min) * i / (steps - 1);
-                    var color = getColor(value, min, max);
+                    var color = getColor(value, min, max, metricName);
                     div.innerHTML +=
                         '<div class="legend-item"><i style="background:' + color + '"></i> ' +
                         value.toFixed(2) + '</div>';
@@ -905,7 +923,7 @@ class GeoJSONExporter:
                     }
                     
                     if (value !== null && !isNaN(value) && range.min !== range.max) {
-                        fillColor = getColor(value, range.min, range.max);
+                        fillColor = getColor(value, range.min, range.max, colorMetric);
                     }
                     
                     return { 
