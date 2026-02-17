@@ -207,6 +207,9 @@ class ComboBoxHandler:
         combobox.lineEdit().blockSignals(False)
         model.blockSignals(False)
 
+        if model.rowCount() > 0:
+            model.dataChanged.emit(model.index(0, 0), model.index(model.rowCount() - 1, 0))
+
     @staticmethod
     def keepPopupOpenOnClick(combobox):
         view = combobox.view()
