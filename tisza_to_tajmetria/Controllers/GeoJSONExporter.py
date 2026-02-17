@@ -194,6 +194,17 @@ class GeoJSONExporter:
             background: #3182bd;
             color: white;
         }
+
+        .search-input {
+            width: 100%;
+            padding: 6px 8px;
+            margin: 6px 0 10px 0;
+            border: 1px solid #c9c9c9;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #333;
+            background: #ffffff;
+        }
         
         .option {
             display: flex;
@@ -385,6 +396,7 @@ class GeoJSONExporter:
                     <button type="button" id="layers-all">Select All</button>
                     <button type="button" id="layers-none">Clear All</button>
                 </div>
+                <input type="text" id="layer-search" class="search-input" placeholder="Search layers..." />
                 <div id="layer-list" class="option-list"></div>
             </div>
             
@@ -394,11 +406,13 @@ class GeoJSONExporter:
                     <button type="button" id="metrics-all">Select All</button>
                     <button type="button" id="metrics-none">Clear All</button>
                 </div>
+                <input type="text" id="metric-search" class="search-input" placeholder="Search metrics..." />
                 <div id="metric-list" class="option-list"></div>
             </div>
 
             <div class="filter-section">
                 <h2>Map Coloring</h2>
+                <input type="text" id="color-metric-search" class="search-input" placeholder="Search color metric..." />
                 <select id="color-metric-select" class="color-select"></select>
             </div>
             
@@ -435,6 +449,7 @@ class GeoJSONExporter:
         var geojsonFeature = GEOJSON_PLACEHOLDER;
         var geojsonLayer = null;
         var legendControl = null;
+        var colorMetricOptions = [];
 
         function getPalette(metricName) {
             var palettes = {
@@ -609,17 +624,66 @@ class GeoJSONExporter:
             });
         }
 
+        function filterOptionList(containerId, query) {
+            var container = document.getElementById(containerId);
+            if (!container) { return; }
+            var term = (query || '').toLowerCase().trim();
+            var options = container.querySelectorAll('label.option');
+            for (var i = 0; i < options.length; i++) {
+                var labelText = (options[i].textContent || '').toLowerCase();
+                options[i].style.display = (term === '' || labelText.indexOf(term) !== -1) ? 'flex' : 'none';
+            }
+        }
+
         function renderColorMetricSelector(values) {
             var select = document.getElementById('color-metric-select');
             if (!select) { return; }
             select.innerHTML = '';
 
-            var options = ['Patch Area (km²)'].concat(values || []);
-            for (var i = 0; i < options.length; i++) {
+            colorMetricOptions = ['Patch Area (km²)'].concat(values || []);
+            for (var i = 0; i < colorMetricOptions.length; i++) {
                 var option = document.createElement('option');
-                option.value = options[i];
-                option.textContent = options[i];
+                option.value = colorMetricOptions[i];
+                option.textContent = colorMetricOptions[i];
                 select.appendChild(option);
+            }
+        }
+
+        function filterColorMetricOptions(query) {
+            var select = document.getElementById('color-metric-select');
+            if (!select) { return; }
+            var term = (query || '').toLowerCase().trim();
+            var currentValue = select.value;
+            select.innerHTML = '';
+
+            var filtered = [];
+            for (var i = 0; i < colorMetricOptions.length; i++) {
+                var label = colorMetricOptions[i];
+                if (term === '' || label.toLowerCase().indexOf(term) !== -1) {
+                    filtered.push(label);
+                }
+            }
+
+            if (!filtered.length) {
+                var emptyOption = document.createElement('option');
+                emptyOption.value = '';
+                emptyOption.textContent = 'No matches';
+                select.appendChild(emptyOption);
+                return;
+            }
+
+            for (var j = 0; j < filtered.length; j++) {
+                var option = document.createElement('option');
+                option.value = filtered[j];
+                option.textContent = filtered[j];
+                select.appendChild(option);
+            }
+
+            if (currentValue && filtered.indexOf(currentValue) !== -1) {
+                select.value = currentValue;
+            } else {
+                select.value = filtered[0];
+                updateMap();
             }
         }
 
@@ -967,6 +1031,15 @@ class GeoJSONExporter:
         renderOptions('metric-list', metricNames, 'metric_');
         renderColorMetricSelector(metricNames);
         applyInitialSelections();
+        document.getElementById('layer-search').addEventListener('input', function(e) {
+            filterOptionList('layer-list', e.target.value);
+        });
+        document.getElementById('metric-search').addEventListener('input', function(e) {
+            filterOptionList('metric-list', e.target.value);
+        });
+        document.getElementById('color-metric-search').addEventListener('input', function(e) {
+            filterColorMetricOptions(e.target.value);
+        });
         document.getElementById('layers-all').addEventListener('click', function() {
             setAllOptions('layer-list', true);
         });
@@ -1158,7 +1231,7 @@ class GeoJSONExporter:
                         }
                         # Add layer-level metrics for reference
                         for metric_name, metric_value in layer_metrics.items():
-                            patch_metrics[f"Layer {metric_name}"] = metric_value
+                            patch_metrics[f"{metric_name}"] = metric_value
                         
                         metric_desc = ", ".join([f"{k}: {v}" for k, v in patch_metrics.items()])
                         
