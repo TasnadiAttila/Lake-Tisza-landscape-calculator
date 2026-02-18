@@ -36,6 +36,7 @@ from .tisza_to_tajmetria_dialog import TiszaToTajmetriaDialog
 from .Controllers.ComboBoxHandler import ComboBoxHandler
 from .Controllers.ExcelHelper import ExcelHelper
 from .Controllers.GeoJSONExporter import GeoJSONExporter
+from .Controllers.BackgroundTaskWorker import MetricCalculationWorker, ExcelExportWorker, ParallelMetricCalculationWorker
 import os.path
 import webbrowser
 
@@ -64,6 +65,17 @@ class TiszaToTajmetria:
         self.menu = self.tr(u'&Tiszta To Tajmetria')
         self.first_start = None
         self.dlg = None
+        
+        # Background task workers
+        self.calculation_worker = None
+        self.export_worker = None
+        
+        # Store calculation results for export
+        self.last_calculation_data = None
+        self.last_metric_data = None
+        
+        # Performance settings
+        self.use_parallel_processing = True  # Enable parallel processing for better performance
 
     def tr(self, message):
         """Get translation."""
@@ -125,6 +137,8 @@ class TiszaToTajmetria:
 
             self.dlg.calculateButton.clicked.connect(self.onCalculateClicked)
             self.dlg.exportButton.clicked.connect(self.onExportClicked)
+            self.dlg.cancelButton.clicked.connect(self.onCancelClicked)
+            self.dlg.parallelProcessingCheckbox.stateChanged.connect(self.onParallelProcessingToggled)
             self.dlg.saveFileDialog.setFilter("Excel files (*.xlsx);")
 
             ComboBoxHandler.makeComboboxEditable(self.dlg.layerSelector)
@@ -191,6 +205,7 @@ class TiszaToTajmetria:
         return mapping
 
     def onCalculateClicked(self):
+        """Handle calculate button click - start background calculation"""
         UNIT_MAPPING = {
             "Effective Mesh Size": "km²",  
             "Euclidean Distance": "km",  
@@ -213,8 +228,6 @@ class TiszaToTajmetria:
             "LandCover": "km²",
         }
 
-        output_path = self.dlg.saveFileDialog.filePath()
-
         selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
         if not selected_layers:
             self.iface.messageBar().pushMessage(
@@ -235,431 +248,154 @@ class TiszaToTajmetria:
             )
             return
 
-        data_to_write = []
-        # Add explicit columns for tidy plotting
-        headers = [
-            "Layer Name",
-            "Metric Name",
-            "Statistic Detail",
-            "Value",
-            "Unit",
-            "Class ID",
-            "Class Name",
-        ]
+        # Disable buttons during calculation
+        self.dlg.calculateButton.setEnabled(False)
+        self.dlg.exportButton.setEnabled(False)
+        
+        # Show progress UI
+        self.showProgress()
 
-        for layer in selected_layers:
-            layer_name = layer.name()
-            land_cover_mapping = self.get_land_cover_mapping_from_layer(layer)
-
-            for metric_func, metric_name in selected_metrics:
-                default_unit = UNIT_MAPPING.get(metric_name, "N/A")
-
-                try:
-                    value = metric_func(layer)
-
-                    if isinstance(value, dict):
-                        if metric_name == "Patch Density":
-                            patch_stats = value.get("patch_stats", {})
-
-                            # Build a dict-like string with CLASS NAMES as keys,
-                            # similar to the "Smallest Patch Area" log format
-                            summary_dict_parts = []
-                            for cls, stats in patch_stats.items():
-                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
-
-                                # Remove numeric prefixes like "112 - Name"
-                                if isinstance(original_label, str) and " - " in original_label:
-                                    display_label = original_label.split(" - ", 1)[1].strip()
-                                else:
-                                    display_label = str(original_label)
-
-                                # Skip unknown/fallback classes (e.g., "Class 0")
-                                if display_label.lower().startswith("class "):
-                                    continue
-
-                                class_patch_density = stats.get("patch_density", 0)
-                                summary_dict_parts.append(f"{display_label}: {class_patch_density:.4f}")
-
-                            # Example:
-                            #  Layer - Patch Density calculated. Results: Raw Dict Output:
-                            #  {Discontinuous urban fabric: 0.0020, ...} patches/km²...
-                            summary_message = (
-                                f"{layer_name} - Patch Density calculated. "
-                                f"Results: Raw Dict Output: "
-                                "{" + ", ".join(summary_dict_parts) + "} patches/km²..."
-                            )
-
-                            self.iface.messageBar().pushMessage(
-                                "Info",
-                                summary_message,
-                                level=Qgis.Info,
-                                duration=10
-                            )
-
-                            patch_stats = value.get("patch_stats", {})
-                            for cls, stats in patch_stats.items():
-                                # Use the SAME cleaned class name as in the iface log
-                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                                if isinstance(original_label, str) and " - " in original_label:
-                                    class_name = original_label.split(" - ", 1)[1].strip()
-                                else:
-                                    class_name = str(original_label)
-
-                                # Skip unknown/fallback classes (e.g., "Class 0")
-                                if class_name.lower().startswith("class "):
-                                    continue
-
-                                num_patches = stats.get("num_patches", 0)
-                                data_to_write.append([
-                                    layer_name,
-                                    metric_name,
-                                    "Patch Count",
-                                    num_patches,
-                                    "patches",
-                                    cls,
-                                    class_name,
-                                ])
-
-                                # Osztályonkénti patch density
-                                class_patch_density = stats.get("patch_density", 0)
-                                data_to_write.append([
-                                    layer_name,
-                                    metric_name,
-                                    "Patch Density",
-                                    class_patch_density,
-                                    "patches/km²",
-                                    cls,
-                                    class_name,
-                                ])
-
-                                if "smallest_patch_area" in stats:
-                                    smallest_area = stats["smallest_patch_area"]
-                                    data_to_write.append([
-                                        layer_name,
-                                        metric_name,
-                                        f"{class_name} Smallest Area",
-                                        smallest_area,
-                                        UNIT_MAPPING.get("Smallest Patch Area", "km²")
-                                    ])
-
-                        elif metric_name == "Land Cover":
-                            # value: dict -> {class_id: percentage}
-                            for cls, percentage in value.items():
-                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                                if isinstance(original_label, str) and " - " in original_label:
-                                    class_name = original_label.split(" - ", 1)[1].strip()
-                                else:
-                                    class_name = str(original_label)
-
-                                if class_name.lower().startswith("class "):
-                                    continue
-
-                                data_to_write.append([
-                                    layer_name,
-                                    metric_name,
-                                    "Percentage",
-                                    float(percentage),
-                                    "%",
-                                    cls,
-                                    class_name,
-                                ])
-
-                        elif metric_name == "Mean Patch Area":
-                            # value: dict -> {class_id: mean_area_km2}
-                            for cls, mean_area in value.items():
-                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                                if isinstance(original_label, str) and " - " in original_label:
-                                    class_name = original_label.split(" - ", 1)[1].strip()
-                                else:
-                                    class_name = str(original_label)
-
-                                if class_name.lower().startswith("class "):
-                                    continue
-
-                                data_to_write.append([
-                                    layer_name,
-                                    metric_name,
-                                    "Mean Patch Area",
-                                    float(mean_area),
-                                    UNIT_MAPPING.get("Mean Patch Area", "km²"),
-                                    cls,
-                                    class_name,
-                                ])
-
-                        elif metric_name == "Median Patch Area":
-                            # value: dict -> {class_id: median_area_km2}
-                            for cls, median_area in value.items():
-                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                                if isinstance(original_label, str) and " - " in original_label:
-                                    class_name = original_label.split(" - ", 1)[1].strip()
-                                else:
-                                    class_name = str(original_label)
-
-                                if class_name.lower().startswith("class "):
-                                    continue
-
-                                data_to_write.append([
-                                    layer_name,
-                                    metric_name,
-                                    "Median Patch Area",
-                                    float(median_area),
-                                    UNIT_MAPPING.get("Median Patch Area", "km²"),
-                                    cls,
-                                    class_name,
-                                ])
-
-                        elif metric_name == "Smallest Patch Area":
-                            # value: dict -> {class_id: smallest_area_km2}
-                            for cls, smallest_area in value.items():
-                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                                if isinstance(original_label, str) and " - " in original_label:
-                                    class_name = original_label.split(" - ", 1)[1].strip()
-                                else:
-                                    class_name = str(original_label)
-
-                                if class_name.lower().startswith("class "):
-                                    continue
-
-                                data_to_write.append([
-                                    layer_name,
-                                    metric_name,
-                                    "Smallest Patch Area",
-                                    float(smallest_area),
-                                    UNIT_MAPPING.get("Smallest Patch Area", "km²"),
-                                    cls,
-                                    class_name,
-                                ])
-
-                        elif metric_name == "Nearest Neighbour Distance":
-                            # value: dict -> {class_id: avg_distance}
-                            for cls, distance_val in value.items():
-                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                                if isinstance(original_label, str) and " - " in original_label:
-                                    class_name = original_label.split(" - ", 1)[1].strip()
-                                else:
-                                    class_name = str(original_label)
-
-                                if class_name.lower().startswith("class "):
-                                    continue
-
-                                data_to_write.append([
-                                    layer_name,
-                                    metric_name,
-                                    "Nearest Neighbour Distance",
-                                    float(distance_val),
-                                    UNIT_MAPPING.get("Nearest Neighbour Distance", "km"),
-                                    cls,
-                                    class_name,
-                                ])
-
-                        elif metric_name == "Number of Patches":
-                            # value: dict -> {class_id: count}
-                            for cls, count_val in value.items():
-                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                                if isinstance(original_label, str) and " - " in original_label:
-                                    class_name = original_label.split(" - ", 1)[1].strip()
-                                else:
-                                    class_name = str(original_label)
-
-                                if class_name.lower().startswith("class "):
-                                    continue
-
-                                data_to_write.append([
-                                    layer_name,
-                                    metric_name,
-                                    "Patch Count",
-                                    int(count_val),
-                                    "patches",
-                                    cls,
-                                    class_name,
-                                ])
-
-                        elif metric_name == "Patch Cohesion Index":
-                            # value: dict -> {class_id: cohesion_index(0-100)}
-                            for cls, cohesion_val in value.items():
-                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                                if isinstance(original_label, str) and " - " in original_label:
-                                    class_name = original_label.split(" - ", 1)[1].strip()
-                                else:
-                                    class_name = str(original_label)
-
-                                if class_name.lower().startswith("class "):
-                                    continue
-
-                                data_to_write.append([
-                                    layer_name,
-                                    metric_name,
-                                    "Patch Cohesion Index",
-                                    float(cohesion_val),
-                                    UNIT_MAPPING.get("Patch Cohesion Index", "Index (0-100)"),
-                                    cls,
-                                    class_name,
-                                ])
-
-                        elif metric_name == "Splitting Index":
-                            # value: dict -> {class_id: SI}
-                            for cls, si_val in value.items():
-                                original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                                if isinstance(original_label, str) and " - " in original_label:
-                                    class_name = original_label.split(" - ", 1)[1].strip()
-                                else:
-                                    class_name = str(original_label)
-
-                                if class_name.lower().startswith("class "):
-                                    continue
-
-                                data_to_write.append([
-                                    layer_name,
-                                    metric_name,
-                                    "Splitting Index",
-                                    float(si_val),
-                                    UNIT_MAPPING.get("Splitting Index", "Index (Dim.less)"),
-                                    cls,
-                                    class_name,
-                                ])
-
-                        else:
-                            data_to_write.append([
-                                layer_name,
-                                metric_name,
-                                "Raw Dict Output",
-                                str(value),
-                                "N/A",
-                                None,
-                                None,
-                            ])
-
-                    elif isinstance(value, (int, float)):
-                        unit = "patches" if metric_name in ["NumberOfPatches", "Number of Patches"] else default_unit
-
-                        data_to_write.append([
-                            layer_name,
-                            metric_name,
-                            "TOTAL Value",
-                            value,
-                            unit,
-                            None,
-                            None,
-                        ])
-
-                    else:
-                        data_to_write.append([
-                            layer_name,
-                            metric_name,
-                            "Raw Output",
-                            str(value),
-                            "N/A",
-                            None,
-                            None,
-                        ])
-
-                    msg_parts = [
-                        f"{detail}: {val} {unit}"
-                        for (lname, mname, detail, val, unit, _cid, _cname) in data_to_write
-                        if lname == layer_name and mname == metric_name
-                    ]
-                    # For Patch Density we already logged a detailed per-class message above;
-                    # only log here for other metrics to avoid duplicate messages.
-                    if msg_parts and metric_name != "Patch Density":
-                        self.iface.messageBar().pushMessage(
-                            "Info",
-                            f"{layer_name} - {metric_name} calculated. Results: {'; '.join(msg_parts[:1])}...",
-                            level=0,
-                            duration=3
-                        )
-
-                except Exception as e:
-                    data_to_write.append([
-                        layer_name,
-                        metric_name,
-                        "ERROR",
-                        f"Calculation Failed: {str(e)}",
-                        "N/A"
-                    ])
-                    self.iface.messageBar().pushMessage(
-                        "Error",
-                        f"Calculation failed for {layer_name} - {metric_name}: {str(e)}",
-                        level=Qgis.Critical,
-                        duration=5
-                    )
-
-        try:
-            workbook = xlsxwriter.Workbook(output_path)
-            worksheet = workbook.add_worksheet("Metric Results")
-
-            header_format = workbook.add_format(
-                {"bold": True, "border": 1, "bg_color": "#AEC6E3", "align": "center", "valign": "vcenter"})
-            numeric_format = workbook.add_format({"num_format": "0.00", "align": "left"})
-            percentage_format = workbook.add_format({"num_format": "0.00", "align": "left"})  # Not "0.00%" to avoid doubling
-            density_format = workbook.add_format({"num_format": "0.0000", "align": "left"})  # More precision for small values
-            general_format = workbook.add_format({"align": "left"})
-
-            worksheet.set_column("A:A", 25)
-            worksheet.set_column("B:B", 25)
-            worksheet.set_column("C:C", 35)
-            worksheet.set_column("D:D", 15, numeric_format)
-            worksheet.set_column("E:E", 15)
-            worksheet.set_column("F:F", 12)
-            worksheet.set_column("G:G", 30)
-
-            worksheet.write_row("A1", headers, header_format)
-
-            row_num = 1
-            for row_data in data_to_write:
-                layer_name, metric_name, detail, value, unit, class_id, class_name = row_data
-
-                worksheet.write(row_num, 0, layer_name)
-                worksheet.write(row_num, 1, metric_name)
-                worksheet.write(row_num, 2, detail)
-                worksheet.write(row_num, 4, unit)
-                # Optional tidy fields for class-specific metrics
-                if class_id is not None:
-                    try:
-                        worksheet.write(row_num, 5, int(class_id))
-                    except Exception:
-                        worksheet.write(row_num, 5, str(class_id))
-                if class_name is not None:
-                    worksheet.write(row_num, 6, class_name)
-
-                if isinstance(value, (int, float)):
-                    # Apply appropriate formatting based on unit to prevent display issues
-                    if unit == "%":
-                        # Percentage values are already in percentage form (e.g., 74.24 for 74.24%)
-                        # Use plain numeric format to avoid Excel multiplying by 100
-                        worksheet.write(row_num, 3, value, percentage_format)
-                    elif "patches/km²" in unit:
-                        # Patch density values are typically very small, use more precision
-                        worksheet.write(row_num, 3, value, density_format)
-                    else:
-                        worksheet.write(row_num, 3, value, numeric_format)
-                else:
-                    worksheet.write(row_num, 3, str(value), general_format)
-
-                row_num += 1
-
-            workbook.close()
-
-            self.iface.messageBar().pushMessage(
-                "Success",
-                f"Metrics successfully written to Excel file: {output_path}",
-                level=Qgis.Success,
-                duration=5
+        # Create and configure worker (parallel or sequential)
+        if self.use_parallel_processing:
+            self.calculation_worker = ParallelMetricCalculationWorker(
+                selected_layers,
+                selected_metrics,
+                self.get_land_cover_mapping_from_layer,
+                UNIT_MAPPING
             )
+        else:
+            self.calculation_worker = MetricCalculationWorker(
+                selected_layers,
+                selected_metrics,
+                self.get_land_cover_mapping_from_layer,
+                UNIT_MAPPING
+            )
+        
+        # Connect signals
+        self.calculation_worker.progress.connect(self.onProgressUpdate)
+        self.calculation_worker.finished_calculation.connect(self.onCalculationFinished)
+        self.calculation_worker.error.connect(self.onCalculationError)
+        
+        # Start calculation
+        self.calculation_worker.start()
 
-        except xlsxwriter.exceptions.FileCreateError:
-            self.iface.messageBar().pushMessage(
-                "Error",
-                f"Cannot create Excel file. Please close the file if it is open: {output_path}",
-                level=Qgis.Critical,
-                duration=10
-            )
-        except Exception as e:
-            self.iface.messageBar().pushMessage(
-                "Error",
-                f"An unexpected error occurred while writing to Excel: {str(e)}",
-                level=Qgis.Critical,
-                duration=10
-            )
+
+    def showProgress(self):
+        """Show progress bar and label"""
+        self.dlg.progressBar.setVisible(True)
+        self.dlg.progressLabel.setVisible(True)
+        self.dlg.cancelButton.setVisible(True)
+        self.dlg.cancelButton.setEnabled(True)
+    
+    def hideProgress(self):
+        """Hide progress bar and label"""
+        self.dlg.progressBar.setVisible(False)
+        self.dlg.progressLabel.setVisible(False)
+        self.dlg.cancelButton.setVisible(False)
+        self.dlg.cancelButton.setEnabled(False)
+        self.dlg.progressBar.setValue(0)
+        self.dlg.progressLabel.setText("Ready")
+    
+    def onProgressUpdate(self, percent, message):
+        """Handle progress updates from worker"""
+        self.dlg.progressBar.setValue(percent)
+        self.dlg.progressLabel.setText(message)
+    
+    def onCalculationFinished(self, data_to_write, metric_data):
+        """Handle calculation completion"""
+        self.hideProgress()
+        
+        # Store results for later export
+        self.last_calculation_data = data_to_write
+        self.last_metric_data = metric_data
+        
+        # Re-enable buttons
+        self.dlg.calculateButton.setEnabled(True)
+        self.dlg.exportButton.setEnabled(True)
+        
+        self.iface.messageBar().pushMessage(
+            "Success",
+            f"Calculation complete! {len(data_to_write)} metrics calculated.",
+            level=Qgis.Success,
+            duration=5
+        )
+        
+        # Clean up worker
+        if self.calculation_worker:
+            self.calculation_worker.deleteLater()
+            self.calculation_worker = None
+    
+    def onCalculationError(self, error_message):
+        """Handle calculation errors"""
+        self.hideProgress()
+        self.dlg.calculateButton.setEnabled(True)
+        self.dlg.exportButton.setEnabled(False)
+        
+        self.iface.messageBar().pushMessage(
+            "Error",
+            error_message,
+            level=Qgis.Critical,
+            duration=10
+        )
+        
+        # Clean up worker
+        if self.calculation_worker:
+            self.calculation_worker.deleteLater()
+            self.calculation_worker = None
+    
+    def onExportFinished(self, output_path):
+        """Handle Excel export completion"""
+        self.hideProgress()
+        
+        # Re-enable buttons
+        self.dlg.calculateButton.setEnabled(True)
+        self.dlg.exportButton.setEnabled(True)
+        
+        self.iface.messageBar().pushMessage(
+            "Success",
+            f"Data exported successfully to: {output_path}",
+            level=Qgis.Success,
+            duration=5
+        )
+        
+        # Clean up worker
+        if self.export_worker:
+            self.export_worker.deleteLater()
+            self.export_worker = None
+    
+    def onExportError(self, error_message):
+        """Handle export errors"""
+        self.hideProgress()
+        self.dlg.calculateButton.setEnabled(True)
+        self.dlg.exportButton.setEnabled(True)
+        
+        self.iface.messageBar().pushMessage(
+            "Error",
+            error_message,
+            level=Qgis.Critical,
+            duration=10
+        )
+        
+        # Clean up worker
+        if self.export_worker:
+            self.export_worker.deleteLater()
+            self.export_worker = None
+    
+    def onCancelClicked(self):
+        """Handle cancel button click"""
+        if self.calculation_worker and self.calculation_worker.isRunning():
+            self.calculation_worker.cancel()
+            self.dlg.progressLabel.setText("Cancelling...")
+            self.dlg.cancelButton.setEnabled(False)
+        
+        if self.export_worker and self.export_worker.isRunning():
+            self.export_worker.cancel()
+            self.dlg.progressLabel.setText("Cancelling...")
+            self.dlg.cancelButton.setEnabled(False)
+
+    def onParallelProcessingToggled(self, state):
+        """Handle parallel processing checkbox toggle"""
+        self.use_parallel_processing = (state == 2)  # Qt.Checked = 2
 
     def updateExportButtonState(self):
         """Enable export button only if at least one layer and one metric are selected"""
@@ -671,9 +407,19 @@ class TiszaToTajmetria:
         self.dlg.exportButton.setEnabled(is_enabled)
 
     def onExportClicked(self):
-        """Handle export button click - save Excel and generate GeoJSON + web map"""
+        """Handle export button click - save Excel and generate GeoJSON + web map using previously calculated data"""
         
-        # Get output path for Excel (reuse same path)
+        # Check if calculation has been performed
+        if self.last_calculation_data is None or self.last_metric_data is None:
+            self.iface.messageBar().pushMessage(
+                "Error",
+                "Please run Calculate first before exporting!",
+                level=Qgis.Warning,
+                duration=5
+            )
+            return
+        
+        # Get output path for Excel
         output_path = self.dlg.saveFileDialog.filePath()
         
         if not output_path:
@@ -689,89 +435,68 @@ class TiszaToTajmetria:
         if not output_path.lower().endswith('.xlsx'):
             output_path += '.xlsx'
         
-        selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
-        if not selected_layers:
-            self.iface.messageBar().pushMessage(
-                "Error",
-                "No layer selected!",
-                level=Qgis.Warning,
-                duration=3
-            )
-            return
-
-        selected_metrics = ComboBoxHandler.getCheckedItems(self.dlg.metricSelector)
-        if not selected_metrics:
-            self.iface.messageBar().pushMessage(
-                "Error",
-                "No metric selected!",
-                level=Qgis.Warning,
-                duration=3
-            )
-            return
-
-        # Step 1: Create Excel file with metrics
-        self.iface.messageBar().pushMessage(
-            "Info",
-            "Exporting data to Excel and generating maps...",
-            level=Qgis.Info,
-            duration=3
+        # Disable buttons during export
+        self.dlg.calculateButton.setEnabled(False)
+        self.dlg.exportButton.setEnabled(False)
+        
+        # Show progress UI
+        self.showProgress()
+        
+        # Define headers
+        headers = [
+            "Layer Name",
+            "Metric Name",
+            "Statistic Detail",
+            "Value",
+            "Unit",
+            "Class ID",
+            "Class Name",
+        ]
+        
+        # Create and configure Excel export worker
+        self.export_worker = ExcelExportWorker(
+            self.last_calculation_data,
+            headers,
+            output_path
         )
         
-        # Prepare metric data for each layer
-        metric_data = {}
-        UNIT_MAPPING = {
-            "Effective Mesh Size": "km²",  
-            "Euclidean Distance": "km",  
-            "Fractal Dimension Index": "Index (0-2)",
-            "Greatest Patch Area": "km²",
-            "Landscape Division": "Index (0-1)",
-            "Landscape Proportion": "%",
-            "Land Cover": "%",
-            "Total Landscape Area": "km²",  
-            "Mean Patch Area": "km²",
-            "Median Patch Area": "km²",
-            "Nearest Neighbour Distance": "km",
-            "Number of Patches": "patches",
-            "Patch Cohesion Index": "Index (0-100)",
-            "Patch Density": "patches/km²",
-            "Smallest Patch Area": "km²",
-            "Splitting Index": "Index (Dim.less)",
-        }
+        # Connect signals
+        self.export_worker.progress.connect(self.onProgressUpdate)
+        self.export_worker.finished_export.connect(self.onExportFinishedWithMap)
+        self.export_worker.error.connect(self.onExportError)
         
-        # Collect metrics for each layer
-        for layer in selected_layers:
-            layer_metrics = {}
-            for metric_func, metric_name in selected_metrics:
-                try:
-                    value = metric_func(layer)
-                    if isinstance(value, dict):
-                        # For dict metrics, take first key-value pair as representative
-                        first_key = next(iter(value.keys()))
-                        layer_metrics[metric_name] = f"{value[first_key]:.2f}"
-                    elif isinstance(value, (int, float)):
-                        layer_metrics[metric_name] = f"{value:.2f}"
-                    else:
-                        layer_metrics[metric_name] = str(value)
-                except Exception as e:
-                    layer_metrics[metric_name] = f"Error: {str(e)}"
-            
-            metric_data[layer.name()] = layer_metrics
+        # Start export
+        self.export_worker.start()
+    
+    def onExportFinishedWithMap(self, output_path):
+        """Handle Excel export completion and generate map"""
+        # Get layers and metrics for map generation
+        selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
         
         # Step 2: Export to GeoJSON and generate web map
         try:
             # Get directory from output path
             output_dir = os.path.dirname(output_path) or "."
             
+            self.dlg.progressLabel.setText("Generating GeoJSON and web map...")
+            self.dlg.progressBar.setValue(95)
+            
             geojson_path, html_url = GeoJSONExporter.export_and_generate_map(
                 selected_layers,
-                metric_data,
+                self.last_metric_data,
                 output_dir
             )
+            
+            self.hideProgress()
+            
+            # Re-enable buttons
+            self.dlg.calculateButton.setEnabled(True)
+            self.dlg.exportButton.setEnabled(True)
             
             if geojson_path and html_url:
                 self.iface.messageBar().pushMessage(
                     "Success",
-                    f"Data exported successfully!\nGeoJSON: {os.path.basename(geojson_path)}\nMap: {html_url}",
+                    f"Data exported successfully!\nExcel: {os.path.basename(output_path)}\nGeoJSON: {os.path.basename(geojson_path)}\nMap: {html_url}",
                     level=Qgis.Success,
                     duration=10
                 )
@@ -783,16 +508,26 @@ class TiszaToTajmetria:
                     print(f"Could not open map in browser: {e}")
             else:
                 self.iface.messageBar().pushMessage(
-                    "Error",
-                    "Failed to generate GeoJSON or web map!",
-                    level=Qgis.Critical,
-                    duration=5
+                    "Warning",
+                    f"Excel exported successfully to {output_path}, but GeoJSON/map generation failed!",
+                    level=Qgis.Warning,
+                    duration=10
                 )
         
         except Exception as e:
+            self.hideProgress()
+            self.dlg.calculateButton.setEnabled(True)
+            self.dlg.exportButton.setEnabled(True)
+            
             self.iface.messageBar().pushMessage(
-                "Error",
-                f"Export failed: {str(e)}",
-                level=Qgis.Critical,
-                duration=5
+                "Warning",
+                f"Excel exported successfully, but map generation failed: {str(e)}",
+                level=Qgis.Warning,
+                duration=10
             )
+        
+        # Clean up worker
+        if self.export_worker:
+            self.export_worker.deleteLater()
+            self.export_worker = None
+

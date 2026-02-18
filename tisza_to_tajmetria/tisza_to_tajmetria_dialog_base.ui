@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>600</width>
-    <height>200</height>
+    <height>260</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -22,13 +22,13 @@
   <property name="minimumSize">
    <size>
     <width>600</width>
-    <height>200</height>
+    <height>260</height>
    </size>
   </property>
   <property name="maximumSize">
    <size>
     <width>600</width>
-    <height>200</height>
+    <height>260</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -145,6 +145,73 @@
      <enum>QComboBox::NoInsert</enum>
     </property>
    </widget>
+  </widget>
+  <widget class="QProgressBar" name="progressBar">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>160</y>
+     <width>580</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>0</number>
+   </property>
+   <property name="visible">
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="QLabel" name="progressLabel">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>190</y>
+     <width>480</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Ready</string>
+   </property>
+   <property name="visible">
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="cancelButton">
+   <property name="geometry">
+    <rect>
+     <x>500</x>
+     <y>185</y>
+     <width>90</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Cancel</string>
+   </property>
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="visible">
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="QCheckBox" name="parallelProcessingCheckbox">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>220</y>
+     <width>300</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Use parallel processing (faster for multiple metrics)</string>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
   </widget>
  </widget>
  <customwidgets>
