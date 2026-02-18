@@ -36,6 +36,7 @@ from .tisza_to_tajmetria_dialog import TiszaToTajmetriaDialog
 from .Controllers.ComboBoxHandler import ComboBoxHandler
 from .Controllers.ExcelHelper import ExcelHelper
 from .Controllers.GeoJSONExporter import GeoJSONExporter
+from .Controllers.CSVExporter import CSVExporter
 from .Controllers.BackgroundTaskWorker import MetricCalculationWorker, ExcelExportWorker, ParallelMetricCalculationWorker
 import os.path
 import webbrowser
@@ -407,7 +408,7 @@ class TiszaToTajmetria:
         self.dlg.exportButton.setEnabled(is_enabled)
 
     def onExportClicked(self):
-        """Handle export button click - save Excel and generate GeoJSON + web map using previously calculated data"""
+        """Handle export button click - save Excel/CSV and generate GeoJSON + web map using previously calculated data"""
         
         # Check if calculation has been performed
         if self.last_calculation_data is None or self.last_metric_data is None:
@@ -419,7 +420,7 @@ class TiszaToTajmetria:
             )
             return
         
-        # Get output path for Excel
+        # Get output path
         output_path = self.dlg.saveFileDialog.filePath()
         
         if not output_path:
@@ -431,9 +432,19 @@ class TiszaToTajmetria:
             )
             return
         
-        # Ensure .xlsx extension
-        if not output_path.lower().endswith('.xlsx'):
-            output_path += '.xlsx'
+        # Check which export formats are selected
+        export_excel = self.dlg.exportExcelCheckbox.isChecked()
+        export_csv = self.dlg.exportCsvCheckbox.isChecked()
+        export_map = self.dlg.exportMapCheckbox.isChecked()
+        
+        if not (export_excel or export_csv or export_map):
+            self.iface.messageBar().pushMessage(
+                "Warning",
+                "Please select at least one export format!",
+                level=Qgis.Warning,
+                duration=5
+            )
+            return
         
         # Disable buttons during export
         self.dlg.calculateButton.setEnabled(False)
@@ -453,20 +464,128 @@ class TiszaToTajmetria:
             "Class Name",
         ]
         
-        # Create and configure Excel export worker
-        self.export_worker = ExcelExportWorker(
-            self.last_calculation_data,
-            headers,
-            output_path
-        )
+        # Export to selected formats
+        export_paths = []
         
-        # Connect signals
-        self.export_worker.progress.connect(self.onProgressUpdate)
-        self.export_worker.finished_export.connect(self.onExportFinishedWithMap)
-        self.export_worker.error.connect(self.onExportError)
+        # Export Excel if selected
+        if export_excel:
+            excel_path = output_path if output_path.lower().endswith('.xlsx') else output_path + '.xlsx'
+            
+            # Create and configure Excel export worker
+            self.export_worker = ExcelExportWorker(
+                self.last_calculation_data,
+                headers,
+                excel_path
+            )
+            
+            # Connect signals
+            self.export_worker.progress.connect(self.onProgressUpdate)
+            self.export_worker.finished_export.connect(lambda path: self.onFormatExportFinished(path, export_csv, export_map, output_path, headers))
+            self.export_worker.error.connect(self.onExportError)
+            
+            # Start export
+            self.export_worker.start()
+        else:
+            # Skip Excel, proceed directly to other formats
+            self.onFormatExportFinished(None, export_csv, export_map, output_path, headers)
+    
+    def onFormatExportFinished(self, excel_path, export_csv, export_map, base_output_path, headers):
+        """Handle completion of one export format and proceed to others"""
+        export_paths = []
         
-        # Start export
-        self.export_worker.start()
+        if excel_path:
+            export_paths.append(f"Excel: {os.path.basename(excel_path)}")
+        
+        # Export CSV if selected
+        if export_csv:
+            try:
+                csv_path = base_output_path.replace('.xlsx', '') if base_output_path.lower().endswith('.xlsx') else base_output_path
+                csv_path = csv_path + '.csv' if not csv_path.lower().endswith('.csv') else csv_path
+                
+                self.dlg.progressLabel.setText("Exporting to CSV...")
+                self.dlg.progressBar.setValue(60)
+                
+                # Export main CSV (tidy format)
+                success = CSVExporter.export_to_csv(self.last_calculation_data, csv_path, headers)
+                if success:
+                    export_paths.append(f"CSV: {os.path.basename(csv_path)}")
+                
+                # Also export summary CSV
+                CSVExporter.export_summary_csv(self.last_metric_data, csv_path)
+                summary_csv = csv_path.replace('.csv', '_summary.csv')
+                if os.path.exists(summary_csv):
+                    export_paths.append(f"Summary CSV: {os.path.basename(summary_csv)}")
+                
+                # Also export wide format CSV
+                CSVExporter.export_wide_format_csv(self.last_calculation_data, csv_path)
+                wide_csv = csv_path.replace('.csv', '_wide.csv')
+                if os.path.exists(wide_csv):
+                    export_paths.append(f"Wide CSV: {os.path.basename(wide_csv)}")
+                
+            except Exception as e:
+                print(f"CSV export error: {e}")
+                self.iface.messageBar().pushMessage(
+                    "Warning",
+                    f"CSV export failed: {str(e)}",
+                    level=Qgis.Warning,
+                    duration=5
+                )
+        
+        # Export GeoJSON and map if selected
+        if export_map:
+            try:
+                selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
+                output_dir = os.path.dirname(base_output_path) or "."
+                
+                self.dlg.progressLabel.setText("Generating GeoJSON and web map...")
+                self.dlg.progressBar.setValue(80)
+                
+                geojson_path, html_url = GeoJSONExporter.export_and_generate_map(
+                    selected_layers,
+                    self.last_metric_data,
+                    output_dir
+                )
+                
+                if geojson_path:
+                    export_paths.append(f"GeoJSON: {os.path.basename(geojson_path)}")
+                
+                if geojson_path and html_url:
+                    export_paths.append(f"Map: {html_url}")
+                    
+                    # Open web map in browser
+                    try:
+                        webbrowser.open(html_url)
+                    except Exception as e:
+                        print(f"Could not open map in browser: {e}")
+                        
+            except Exception as e:
+                print(f"GeoJSON/Map export error: {e}")
+                self.iface.messageBar().pushMessage(
+                    "Warning",
+                    f"GeoJSON/Map export failed: {str(e)}",
+                    level=Qgis.Warning,
+                    duration=5
+                )
+        
+        # Finalize export
+        self.hideProgress()
+        self.dlg.calculateButton.setEnabled(True)
+        self.dlg.exportButton.setEnabled(True)
+        
+        # Show success message
+        if export_paths:
+            message = "Data exported successfully!\\n" + "\\n".join(export_paths)
+            self.iface.messageBar().pushMessage(
+                "Success",
+                message,
+                level=Qgis.Success,
+                duration=10
+            )
+        
+        # Clean up worker
+        if self.export_worker:
+            self.export_worker.deleteLater()
+            self.export_worker = None
     
     def onExportFinishedWithMap(self, output_path):
         """Handle Excel export completion and generate map"""

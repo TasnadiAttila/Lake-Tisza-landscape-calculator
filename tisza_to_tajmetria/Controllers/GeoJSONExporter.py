@@ -114,7 +114,7 @@ class GeoJSONExporter:
             geojson_str = json.dumps(geojson_data)
             print(f"[generate_web_map] GeoJSON string length: {len(geojson_str)}")
             
-            # Create HTML content with Leaflet map (NOT using f-strings to avoid issues)
+            # Create HTML content with Leaflet map and Chart.js (NOT using f-strings to avoid issues)
             html_content = """<!DOCTYPE html>
 <html>
 <head>
@@ -124,6 +124,7 @@ class GeoJSONExporter:
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -135,9 +136,9 @@ class GeoJSONExporter:
             overflow: hidden;
         }
         
-        /* Sidebar for filters */
+        /* Sidebar for filters and charts */
         #sidebar {
-            width: 350px;
+            width: 400px;
             background: #ffffff;
             border-right: 2px solid #ddd;
             display: flex;
@@ -418,6 +419,16 @@ class GeoJSONExporter:
             
             <div class="filter-section">
                 <div class="summary" id="panel-summary"></div>
+            </div>
+            
+            <div class="filter-section" id="charts-section" style="border-top: 2px solid #08519c;">
+                <h2>📊 Statistics</h2>
+                <div style="margin: 10px 0;">
+                    <canvas id="metricsChart" height="200"></canvas>
+                </div>
+                <div style="margin: 10px 0;">
+                    <canvas id="layerComparisonChart" height="180"></canvas>
+                </div>
             </div>
             
             <div class="filter-section" id="layer-summary-section" style="display:none; border-top: 2px solid #08519c;">
@@ -1021,6 +1032,183 @@ class GeoJSONExporter:
             if (geojsonLayer.getBounds && geojsonLayer.getBounds().isValid()) {
                 map.fitBounds(geojsonLayer.getBounds());
             }
+            
+            // Update charts
+            updateCharts(selectedLayers, selectedMetrics);
+        }
+        
+        var metricsChartInstance = null;
+        var layerChartInstance = null;
+        
+        function updateCharts(selectedLayers, selectedMetrics) {
+            if (!selectedLayers.length || !selectedMetrics.length) {
+                // Hide charts if no selection
+                if (metricsChartInstance) metricsChartInstance.destroy();
+                if (layerChartInstance) layerChartInstance.destroy();
+                return;
+            }
+            
+            // Collect metric values by layer
+            var layerMetricsData = {};
+            
+            for (var i = 0; i < selectedLayers.length; i++) {
+                var layerName = selectedLayers[i];
+                layerMetricsData[layerName] = {};
+                
+                // Find first feature for this layer to get metrics
+                for (var j = 0; j < geojsonFeature.features.length; j++) {
+                    var feature = geojsonFeature.features[j];
+                    var props = feature.properties || {};
+                    if (props.layer_name === layerName) {
+                        var metrics = normalizeMetrics(props);
+                        
+                        for (var k = 0; k < selectedMetrics.length; k++) {
+                            var metricName = selectedMetrics[k];
+                            if (Object.prototype.hasOwnProperty.call(metrics, metricName)) {
+                                var value = parseFloat(metrics[metricName]);
+                                if (!isNaN(value)) {
+                                    layerMetricsData[layerName][metricName] = value;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            // Chart 1: Metrics comparison for first selected layer
+            var ctx1 = document.getElementById('metricsChart');
+            if (ctx1) {
+                if (metricsChartInstance) {
+                    metricsChartInstance.destroy();
+                }
+                
+                var firstLayer = selectedLayers[0];
+                var metricLabels = [];
+                var metricValues = [];
+                
+                for (var m = 0; m < selectedMetrics.length; m++) {
+                    var metric = selectedMetrics[m];
+                    if (layerMetricsData[firstLayer] && layerMetricsData[firstLayer][metric] !== undefined) {
+                        metricLabels.push(metric);
+                        metricValues.push(layerMetricsData[firstLayer][metric]);
+                    }
+                }
+                
+                metricsChartInstance = new Chart(ctx1, {
+                    type: 'bar',
+                    data: {
+                        labels: metricLabels,
+                        datasets: [{
+                            label: firstLayer,
+                            data: metricValues,
+                            backgroundColor: 'rgba(49, 130, 189, 0.7)',
+                            borderColor: 'rgba(8, 81, 156, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'Metrics: ' + firstLayer,
+                                font: { size: 13, weight: 'bold' }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: { font: { size: 10 } }
+                            },
+                            x: {
+                                ticks: { 
+                                    font: { size: 9 },
+                                    autoSkip: false,
+                                    maxRotation: 45,
+                                    minRotation: 45
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Chart 2: Layer comparison for first selected metric
+            if (selectedLayers.length > 1 && selectedMetrics.length > 0) {
+                var ctx2 = document.getElementById('layerComparisonChart');
+                if (ctx2) {
+                    if (layerChartInstance) {
+                        layerChartInstance.destroy();
+                    }
+                    
+                    var firstMetric = selectedMetrics[0];
+                    var layerLabels = [];
+                    var layerValues = [];
+                    
+                    for (var l = 0; l < selectedLayers.length; l++) {
+                        var layer = selectedLayers[l];
+                        if (layerMetricsData[layer] && layerMetricsData[layer][firstMetric] !== undefined) {
+                            layerLabels.push(layer);
+                            layerValues.push(layerMetricsData[layer][firstMetric]);
+                        }
+                    }
+                    
+                    layerChartInstance = new Chart(ctx2, {
+                        type: 'horizontalBar' in Chart.defaults ? 'horizontalBar' : 'bar',
+                        data: {
+                            labels: layerLabels,
+                            datasets: [{
+                                label: firstMetric,
+                                data: layerValues,
+                                backgroundColor: [
+                                    'rgba(255, 99, 132, 0.7)',
+                                    'rgba(54, 162, 235, 0.7)',
+                                    'rgba(255, 206, 86, 0.7)',
+                                    'rgba(75, 192, 192, 0.7)',
+                                    'rgba(153, 102, 255, 0.7)'
+                                ],
+                                borderColor: [
+                                    'rgba(255, 99, 132, 1)',
+                                    'rgba(54, 162, 235, 1)',
+                                    'rgba(255, 206, 86, 1)',
+                                    'rgba(75, 192, 192, 1)',
+                                    'rgba(153, 102, 255, 1)'
+                                ],
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Layer Comparison: ' + firstMetric,
+                                    font: { size: 13, weight: 'bold' }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    beginAtZero: true,
+                                    ticks: { font: { size: 10 } }
+                                },
+                                y: {
+                                    ticks: { font: { size: 10 } }
+                                }
+                            }
+                        }
+                    });
+                }
+            }
         }
 
         var layerNames = collectUniqueValues(function(feature) {
@@ -1277,9 +1465,38 @@ class GeoJSONExporter:
                     }
                     features.append(feature)
             
-            # Create FeatureCollection
+            # Create FeatureCollection with enhanced metadata
+            
+            # Calculate summary statistics
+            total_patches = len(features)
+            unique_layers = len(set([f['properties']['layer_name'] for f in features]))
+            
+            # Calculate area statistics if patch areas exist
+            patch_areas = [f['properties'].get('patch_area', 0) for f in features if f['properties'].get('patch_area')]
+            area_stats = {}
+            if patch_areas:
+                area_stats = {
+                    "total_area_km2": round(sum(patch_areas), 4),
+                    "mean_patch_area_km2": round(sum(patch_areas) / len(patch_areas), 4),
+                    "min_patch_area_km2": round(min(patch_areas), 4),
+                    "max_patch_area_km2": round(max(patch_areas), 4)
+                }
+            
+            # Create enriched metadata
+            import datetime
+            metadata = {
+                "generated_at": datetime.datetime.now().isoformat(),
+                "total_patches": total_patches,
+                "total_layers": unique_layers,
+                "layer_names": list(set([f['properties']['layer_name'] for f in features])),
+                "metrics": list(metric_data.keys()),
+                "crs": crs_info,
+                "statistics": area_stats
+            }
+            
             geojson_data = {
                 "type": "FeatureCollection",
+                "metadata": metadata,
                 "features": features,
                 "crs": {
                     "type": "name",
