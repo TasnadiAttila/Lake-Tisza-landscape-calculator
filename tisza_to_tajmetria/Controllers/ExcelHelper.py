@@ -2,19 +2,26 @@ import xlsxwriter
 import subprocess
 import sys
 
+try:
+    from qgis.core import Qgis
+except ImportError:
+    # QGIS not available (for testing)
+    Qgis = None
+
+
 class ExcelHelper:
-    #TODO: Remove or update messageBar
     @staticmethod
     def ensureXlsxwriterInstalled(self):
         try:
             import xlsxwriter
         except ModuleNotFoundError:
-            self.iface.messageBar().pushMessage(
-                "Info",
-                "xlsxwriter nincs telepítve, telepítés...",
-                level=Qgis.Info,
-                duration=5
-            )
+            if hasattr(self, 'iface') and self.iface:
+                self.iface.messageBar().pushMessage(
+                    "Info",
+                    "xlsxwriter nincs telepítve, telepítés...",
+                    level=Qgis.Info if Qgis else 1,
+                    duration=5
+                )
             subprocess.check_call([sys.executable, "-m", "pip", "install", "--user", "xlsxwriter"])
             import xlsxwriter
 

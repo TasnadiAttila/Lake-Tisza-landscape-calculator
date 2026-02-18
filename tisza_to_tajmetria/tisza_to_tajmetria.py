@@ -590,6 +590,8 @@ class TiszaToTajmetria:
             header_format = workbook.add_format(
                 {"bold": True, "border": 1, "bg_color": "#AEC6E3", "align": "center", "valign": "vcenter"})
             numeric_format = workbook.add_format({"num_format": "0.00", "align": "left"})
+            percentage_format = workbook.add_format({"num_format": "0.00", "align": "left"})  # Not "0.00%" to avoid doubling
+            density_format = workbook.add_format({"num_format": "0.0000", "align": "left"})  # More precision for small values
             general_format = workbook.add_format({"align": "left"})
 
             worksheet.set_column("A:A", 25)
@@ -620,7 +622,16 @@ class TiszaToTajmetria:
                     worksheet.write(row_num, 6, class_name)
 
                 if isinstance(value, (int, float)):
-                    worksheet.write(row_num, 3, value, numeric_format)
+                    # Apply appropriate formatting based on unit to prevent display issues
+                    if unit == "%":
+                        # Percentage values are already in percentage form (e.g., 74.24 for 74.24%)
+                        # Use plain numeric format to avoid Excel multiplying by 100
+                        worksheet.write(row_num, 3, value, percentage_format)
+                    elif "patches/km²" in unit:
+                        # Patch density values are typically very small, use more precision
+                        worksheet.write(row_num, 3, value, density_format)
+                    else:
+                        worksheet.write(row_num, 3, value, numeric_format)
                 else:
                     worksheet.write(row_num, 3, str(value), general_format)
 

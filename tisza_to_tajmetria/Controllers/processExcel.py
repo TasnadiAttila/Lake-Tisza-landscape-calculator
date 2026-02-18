@@ -3,11 +3,10 @@ from openpyxl.chart import BarChart, Reference
 from openpyxl.chart.label import DataLabelList
 import re
 import os
+import ast
 import webbrowser
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-
-#TODO: patch density and nearest fix. 900% instead of 90%
 
 FILENAME = "asd.xlsx"
 OUT_FILENAME = "test_with_charts.xlsx"
@@ -110,6 +109,7 @@ def find_layer_name(sheet, r, c, max_offset=5):
 def parse_dict_from_text(text):
     """Try to parse a dict from text like '{0.0: 74.24, 12.0: 0.13, ...}'
     Returns dict or None. Only accepts dicts with numeric keys.
+    Uses ast.literal_eval for safe parsing.
     """
     if not text or '{' not in text:
         return None
@@ -120,8 +120,8 @@ def parse_dict_from_text(text):
         if start == -1 or end == -1:
             return None
         dict_str = text[start:end+1]
-        # Use eval safely (only for dict literals)
-        result = eval(dict_str, {"__builtins__": {}}, {})
+        # Use ast.literal_eval for safe parsing (only evaluates literals)
+        result = ast.literal_eval(dict_str)
         if isinstance(result, dict):
             # Validate that all keys are numeric (for land cover classes)
             for key in result.keys():
@@ -133,7 +133,7 @@ def parse_dict_from_text(text):
                         # Not a numeric dict, skip it
                         return None
             return result
-    except Exception:
+    except (ValueError, SyntaxError, Exception):
         pass
     return None
 
