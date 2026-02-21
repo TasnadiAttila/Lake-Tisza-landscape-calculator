@@ -7,8 +7,6 @@ Provides non-blocking computation with progress reporting and cancellation suppo
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 import xlsxwriter
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import multiprocessing
 
 
 class MetricCalculationWorker(QThread):
@@ -46,6 +44,18 @@ class MetricCalculationWorker(QThread):
     def cancel(self):
         """Cancel the running calculation."""
         self._is_cancelled = True
+
+    @staticmethod
+    def _format_layer_metric_value(value):
+        """Format metric value for simplified per-layer summary output."""
+        if isinstance(value, dict):
+            for candidate in value.values():
+                if isinstance(candidate, (int, float)):
+                    return f"{candidate:.2f}"
+            return str(value)
+        if isinstance(value, (int, float)):
+            return f"{value:.2f}"
+        return str(value)
         
     def run(self):
         """Execute the calculation in background thread."""
@@ -80,13 +90,7 @@ class MetricCalculationWorker(QThread):
                         value = metric_func(layer)
                         
                         # Store for GeoJSON export (simplified format)
-                        if isinstance(value, dict):
-                            first_key = next(iter(value.keys()))
-                            layer_metrics[metric_name] = f"{value[first_key]:.2f}"
-                        elif isinstance(value, (int, float)):
-                            layer_metrics[metric_name] = f"{value:.2f}"
-                        else:
-                            layer_metrics[metric_name] = str(value)
+                        layer_metrics[metric_name] = self._format_layer_metric_value(value)
                         
                         # Process results for Excel export
                         if isinstance(value, dict):
@@ -407,254 +411,4 @@ class ExcelExportWorker(QThread):
         except Exception as e:
             self.error.emit(f"Unexpected error during Excel export: {str(e)}")
 
-
-class ParallelMetricCalculationWorker(MetricCalculationWorker):
-    """
-    Enhanced worker that calculates multiple metrics in parallel for actual performance gains.
-    
-    Uses ThreadPoolExecutor to compute metrics simultaneously across available CPU cores.
-    Can provide 2-4x speedup on multi-core systems depending on the number of metrics.
-    """
-    
-    def __init__(self, selected_layers, selected_metrics, land_cover_mapping_func, unit_mapping, 
-                 max_workers=None, parent=None):
-        """
-        Initialize the parallel worker.
-        
-        Args:
-            max_workers: Maximum number of parallel threads (None = auto-detect CPU count)
-        """
-        super().__init__(selected_layers, selected_metrics, land_cover_mapping_func, 
-                        unit_mapping, parent)
-        # Auto-detect optimal worker count if not specified
-        if max_workers is None:
-            # Use CPU count but cap at 4 since QGIS operations aren't fully thread-safe
-            cpu_count = multiprocessing.cpu_count()
-            self.max_workers = min(cpu_count, 4)
-        else:
-            self.max_workers = max_workers
-    
-    def _calculate_single_metric(self, layer, metric_func, metric_name):
-        """
-        Calculate a single metric for a layer.
-        
-        Returns:
-            tuple: (layer_name, metric_name, value, error_message)
-        """
-        try:
-            layer_name = layer.name()
-            value = metric_func(layer)
-            return (layer_name, metric_name, value, None)
-        except Exception as e:
-            return (layer.name(), metric_name, None, str(e))
-    
-    def run(self):
-        """Execute calculations in parallel using thread pool."""
-        try:
-            start_time = time.time()
-            data_to_write = []
-            metric_data = {}
-            
-            total_tasks = len(self.selected_layers) * len(self.selected_metrics)
-            completed_tasks = 0
-            
-            self.progress.emit(0, f"Starting parallel calculation ({self.max_workers} workers)...")
-            
-            # Process each layer
-            for layer in self.selected_layers:
-                if self._is_cancelled:
-                    self.progress.emit(0, "Cancelled")
-                    return
-                
-                layer_name = layer.name()
-                land_cover_mapping = self.land_cover_mapping_func(layer)
-                layer_metrics = {}
-                
-                # Submit all metrics for this layer to thread pool
-                with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                    # Create futures for all metrics
-                    future_to_metric = {
-                        executor.submit(self._calculate_single_metric, layer, metric_func, metric_name): 
-                        (metric_func, metric_name)
-                        for metric_func, metric_name in self.selected_metrics
-                    }
-                    
-                    # Process completed metrics as they finish
-                    for future in as_completed(future_to_metric):
-                        if self._is_cancelled:
-                            executor.shutdown(wait=False)
-                            self.progress.emit(0, "Cancelled")
-                            return
-                        
-                        metric_func, metric_name = future_to_metric[future]
-                        layer_name_result, metric_name_result, value, error = future.result()
-                        
-                        completed_tasks += 1
-                        progress_percent = int((completed_tasks / total_tasks) * 100)
-                        elapsed = time.time() - start_time
-                        rate = completed_tasks / elapsed if elapsed > 0 else 0
-                        remaining = (total_tasks - completed_tasks) / rate if rate > 0 else 0
-                        
-                        self.progress.emit(
-                            progress_percent, 
-                            f"[{completed_tasks}/{total_tasks}] {metric_name} ({remaining:.0f}s remaining)"
-                        )
-                        
-                        if error:
-                            # Handle error case
-                            default_unit = self.unit_mapping.get(metric_name, "N/A")
-                            data_to_write.append([
-                                layer_name,
-                                metric_name,
-                                "ERROR",
-                                f"Calculation Failed: {error}",
-                                "N/A",
-                                None,
-                                None,
-                            ])
-                            self.error.emit(f"Error calculating {metric_name} for {layer_name}: {error}")
-                            continue
-                        
-                        default_unit = self.unit_mapping.get(metric_name, "N/A")
-                        
-                        # Store for GeoJSON export (simplified format)
-                        if isinstance(value, dict):
-                            first_key = next(iter(value.keys()))
-                            layer_metrics[metric_name] = f"{value[first_key]:.2f}"
-                        elif isinstance(value, (int, float)):
-                            layer_metrics[metric_name] = f"{value:.2f}"
-                        else:
-                            layer_metrics[metric_name] = str(value)
-                        
-                        # Process results for Excel export (reuse existing logic)
-                        self._process_metric_result(
-                            value, metric_name, layer_name, land_cover_mapping, 
-                            default_unit, data_to_write
-                        )
-                
-                metric_data[layer_name] = layer_metrics
-            
-            elapsed_total = time.time() - start_time
-            self.progress.emit(100, f"Calculation complete in {elapsed_total:.1f}s!")
-            self.finished_calculation.emit(data_to_write, metric_data)
-            
-        except Exception as e:
-            self.error.emit(f"Fatal error during parallel calculation: {str(e)}")
-    
-    def _process_metric_result(self, value, metric_name, layer_name, land_cover_mapping, 
-                               default_unit, data_to_write):
-        """Process a metric calculation result and append to data_to_write."""
-        if isinstance(value, dict):
-            if metric_name == "Patch Density":
-                patch_stats = value.get("patch_stats", {})
-                for cls, stats in patch_stats.items():
-                    original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                    if isinstance(original_label, str) and " - " in original_label:
-                        class_name = original_label.split(" - ", 1)[1].strip()
-                    else:
-                        class_name = str(original_label)
-                    if class_name.lower().startswith("class "):
-                        continue
-                    
-                    data_to_write.append([
-                        layer_name, metric_name, "Patch Count",
-                        stats.get("num_patches", 0), "patches", cls, class_name,
-                    ])
-                    data_to_write.append([
-                        layer_name, metric_name, "Patch Density",
-                        stats.get("patch_density", 0), "patches/km²", cls, class_name,
-                    ])
-            
-            elif metric_name == "Land Cover":
-                for cls, percentage in value.items():
-                    original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                    if isinstance(original_label, str) and " - " in original_label:
-                        class_name = original_label.split(" - ", 1)[1].strip()
-                    else:
-                        class_name = str(original_label)
-                    if class_name.lower().startswith("class "):
-                        continue
-                    data_to_write.append([
-                        layer_name, metric_name, "Percentage",
-                        float(percentage), "%", cls, class_name,
-                    ])
-            
-            elif metric_name in ["Mean Patch Area", "Median Patch Area", "Smallest Patch Area", 
-                                  "Greatest Patch Area"]:
-                for cls, area_value in value.items():
-                    original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                    if isinstance(original_label, str) and " - " in original_label:
-                        class_name = original_label.split(" - ", 1)[1].strip()
-                    else:
-                        class_name = str(original_label)
-                    if class_name.lower().startswith("class "):
-                        continue
-                    data_to_write.append([
-                        layer_name, metric_name, metric_name,
-                        float(area_value), self.unit_mapping.get(metric_name, "km²"),
-                        cls, class_name,
-                    ])
-            
-            elif metric_name == "Nearest Neighbour Distance":
-                for cls, distance in value.items():
-                    original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                    if isinstance(original_label, str) and " - " in original_label:
-                        class_name = original_label.split(" - ", 1)[1].strip()
-                    else:
-                        class_name = str(original_label)
-                    if class_name.lower().startswith("class "):
-                        continue
-                    data_to_write.append([
-                        layer_name, metric_name, "Nearest Neighbour Distance",
-                        float(distance), self.unit_mapping.get("Nearest Neighbour Distance", "km"),
-                        cls, class_name,
-                    ])
-            
-            elif metric_name == "Number of Patches":
-                for cls, count_val in value.items():
-                    original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                    if isinstance(original_label, str) and " - " in original_label:
-                        class_name = original_label.split(" - ", 1)[1].strip()
-                    else:
-                        class_name = str(original_label)
-                    if class_name.lower().startswith("class "):
-                        continue
-                    data_to_write.append([
-                        layer_name, metric_name, "Patch Count",
-                        int(count_val), "patches", cls, class_name,
-                    ])
-            
-            elif metric_name in ["Patch Cohesion Index", "Splitting Index"]:
-                for cls, index_val in value.items():
-                    original_label = land_cover_mapping.get(cls, f"Class {cls}")
-                    if isinstance(original_label, str) and " - " in original_label:
-                        class_name = original_label.split(" - ", 1)[1].strip()
-                    else:
-                        class_name = str(original_label)
-                    if class_name.lower().startswith("class "):
-                        continue
-                    data_to_write.append([
-                        layer_name, metric_name, metric_name,
-                        float(index_val), self.unit_mapping.get(metric_name, "Index"),
-                        cls, class_name,
-                    ])
-            
-            else:
-                data_to_write.append([
-                    layer_name, metric_name, "Raw Dict Output",
-                    str(value), "N/A", None, None,
-                ])
-        
-        elif isinstance(value, (int, float)):
-            unit = "patches" if metric_name in ["NumberOfPatches", "Number of Patches"] else default_unit
-            data_to_write.append([
-                layer_name, metric_name, "TOTAL Value",
-                value, unit, None, None,
-            ])
-        
-        else:
-            data_to_write.append([
-                layer_name, metric_name, "Raw Output",
-                str(value), "N/A", None, None,
-            ])
 

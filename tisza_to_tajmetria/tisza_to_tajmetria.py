@@ -37,7 +37,7 @@ from .Controllers.ComboBoxHandler import ComboBoxHandler
 from .Controllers.ExcelHelper import ExcelHelper
 from .Controllers.GeoJSONExporter import GeoJSONExporter
 from .Controllers.CSVExporter import CSVExporter
-from .Controllers.BackgroundTaskWorker import MetricCalculationWorker, ExcelExportWorker, ParallelMetricCalculationWorker
+from .Controllers.BackgroundTaskWorker import MetricCalculationWorker, ExcelExportWorker
 import os.path
 import webbrowser
 
@@ -74,9 +74,6 @@ class TiszaToTajmetria:
         # Store calculation results for export
         self.last_calculation_data = None
         self.last_metric_data = None
-        
-        # Performance settings
-        self.use_parallel_processing = True  # Enable parallel processing for better performance
 
     def tr(self, message):
         """Get translation."""
@@ -139,7 +136,6 @@ class TiszaToTajmetria:
             self.dlg.calculateButton.clicked.connect(self.onCalculateClicked)
             self.dlg.exportButton.clicked.connect(self.onExportClicked)
             self.dlg.cancelButton.clicked.connect(self.onCancelClicked)
-            self.dlg.parallelProcessingCheckbox.stateChanged.connect(self.onParallelProcessingToggled)
             self.dlg.saveFileDialog.setFilter("Excel files (*.xlsx);")
 
             ComboBoxHandler.makeComboboxEditable(self.dlg.layerSelector)
@@ -256,21 +252,13 @@ class TiszaToTajmetria:
         # Show progress UI
         self.showProgress()
 
-        # Create and configure worker (parallel or sequential)
-        if self.use_parallel_processing:
-            self.calculation_worker = ParallelMetricCalculationWorker(
-                selected_layers,
-                selected_metrics,
-                self.get_land_cover_mapping_from_layer,
-                UNIT_MAPPING
-            )
-        else:
-            self.calculation_worker = MetricCalculationWorker(
-                selected_layers,
-                selected_metrics,
-                self.get_land_cover_mapping_from_layer,
-                UNIT_MAPPING
-            )
+        # Create and configure worker
+        self.calculation_worker = MetricCalculationWorker(
+            selected_layers,
+            selected_metrics,
+            self.get_land_cover_mapping_from_layer,
+            UNIT_MAPPING
+        )
         
         # Connect signals
         self.calculation_worker.progress.connect(self.onProgressUpdate)
@@ -393,10 +381,6 @@ class TiszaToTajmetria:
             self.export_worker.cancel()
             self.dlg.progressLabel.setText("Cancelling...")
             self.dlg.cancelButton.setEnabled(False)
-
-    def onParallelProcessingToggled(self, state):
-        """Handle parallel processing checkbox toggle"""
-        self.use_parallel_processing = (state == 2)  # Qt.Checked = 2
 
     def updateExportButtonState(self):
         """Enable export button only if at least one layer and one metric are selected"""

@@ -197,22 +197,6 @@
     <bool>false</bool>
    </property>
   </widget>
-  <widget class="QCheckBox" name="parallelProcessingCheckbox">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>220</y>
-     <width>300</width>
-     <height>20</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>Use parallel processing (faster for multiple metrics)</string>
-   </property>
-   <property name="checked">
-    <bool>true</bool>
-   </property>
-  </widget>
   <widget class="QLabel" name="exportFormatLabel">
    <property name="geometry">
     <rect>
