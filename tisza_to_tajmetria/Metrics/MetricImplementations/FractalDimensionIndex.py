@@ -53,7 +53,7 @@ class FractalDimensionIndex(IMetricsCalculator, ABC):
             perimeter = data["perimeter"]
 
             if area > 0 and perimeter > 0:
-                fdi = (2 * math.log(0.25 * perimeter)) / math.log(area)
+                fdi = (2 * math.log(perimeter)) / math.log(area)
                 fdi_values.append(fdi)
 
         if len(fdi_values) == 0:
