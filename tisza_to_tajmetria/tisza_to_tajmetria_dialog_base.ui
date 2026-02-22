@@ -229,7 +229,7 @@
     <string>Excel (.xlsx)</string>
    </property>
    <property name="checked">
-    <bool>true</bool>
+    <bool>false</bool>
    </property>
   </widget>
   <widget class="QCheckBox" name="exportCsvCheckbox">
@@ -245,7 +245,7 @@
     <string>CSV (tidy data)</string>
    </property>
    <property name="checked">
-    <bool>true</bool>
+    <bool>false</bool>
    </property>
   </widget>
   <widget class="QCheckBox" name="exportMapCheckbox">
@@ -261,7 +261,7 @@
     <string>GeoJSON + Web Map</string>
    </property>
    <property name="checked">
-    <bool>true</bool>
+    <bool>false</bool>
    </property>
   </widget>
  </widget>
