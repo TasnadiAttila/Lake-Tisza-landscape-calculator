@@ -59,7 +59,7 @@ class PatchDensity(IMetricsCalculator, ABC):
             patch_density_for_class = num_features / total_area_km2 if total_area_km2 != 0 else 0
 
             # Tároljuk az osztály statisztikáit
-            patch_stats[val-1] = {
+            patch_stats[val] = {
                 "num_patches": num_features,
                 "patch_areas": patch_areas,
                 "class_area_km2": class_area_km2,

@@ -503,6 +503,19 @@ class GeoJSONExporter:
             return colors[index];
         }
 
+        var BASE_COLOR = '#08519c';
+        var LAYER_CHANGE_COLORS = [
+            '#d7301f', '#fd8d3c', '#e31a1c', '#7f3b08', '#b30000', '#6a3d9a', '#756bb1', '#bcbddc'
+        ];
+
+        function getChangeColor(layerName, selectedLayers) {
+            var idx = selectedLayers.indexOf(layerName);
+            if (idx <= 0) {
+                return BASE_COLOR;
+            }
+            return LAYER_CHANGE_COLORS[(idx - 1) % LAYER_CHANGE_COLORS.length];
+        }
+
         function getMetricValueRange(selectedLayers, metricName) {
             var values = [];
             if (!geojsonFeature || !geojsonFeature.features || !metricName) {
@@ -522,7 +535,12 @@ class GeoJSONExporter:
                 } else {
                     var metrics = normalizeMetrics(props);
                     if (Object.prototype.hasOwnProperty.call(metrics, metricName)) {
-                        value = parseFloat(metrics[metricName]);
+                        var rawValue = metrics[metricName];
+                        if (typeof rawValue === 'string') {
+                            value = parseFloat(rawValue.replace(/[^0-9.-]/g, ''));
+                        } else {
+                            value = parseFloat(rawValue);
+                        }
                     }
                 }
                 
@@ -533,7 +551,12 @@ class GeoJSONExporter:
             if (!values.length) {
                 return { min: 0, max: 0 };
             }
-            return { min: Math.min.apply(null, values), max: Math.max.apply(null, values) };
+            var minVal = Math.min.apply(null, values);
+            var maxVal = Math.max.apply(null, values);
+            if (minVal === maxVal && minVal !== 0) {
+                maxVal = minVal * 1.1;
+            }
+            return { min: minVal, max: maxVal };
         }
 
         function createLegend(metricName, min, max) {
@@ -541,7 +564,7 @@ class GeoJSONExporter:
                 map.removeControl(legendControl);
                 legendControl = null;
             }
-            if (!metricName || min === max) {
+            if (!metricName) {
                 return;
             }
             
@@ -557,6 +580,30 @@ class GeoJSONExporter:
                         '<div class="legend-item"><i style="background:' + color + '"></i> ' +
                         value.toFixed(2) + '</div>';
                 }
+                return div;
+            };
+            legendControl.addTo(map);
+        }
+
+        function createDifferenceLegend(differenceModeInfo, selectedLayers) {
+            if (legendControl) {
+                map.removeControl(legendControl);
+                legendControl = null;
+            }
+
+            legendControl = L.control({ position: 'bottomright' });
+            legendControl.onAdd = function(map) {
+                var div = L.DomUtil.create('div', 'legend');
+                div.innerHTML = '<h4>Change Map</h4>';
+                div.innerHTML += '<div class="legend-item"><i style="background:' + BASE_COLOR + '"></i> ' + differenceModeInfo.baseLayer + ' (base)</div>';
+
+                for (var i = 1; i < selectedLayers.length; i++) {
+                    var layerName = selectedLayers[i];
+                    var changeColor = getChangeColor(layerName, selectedLayers);
+                    div.innerHTML += '<div class="legend-item"><i style="background:' + changeColor + '"></i> ' + layerName + ' (changes)</div>';
+                }
+
+                div.innerHTML += '<div class="legend-item" style="margin-top:4px; color:#666;">Base layer: ' + differenceModeInfo.baseLayer + '</div>';
                 return div;
             };
             legendControl.addTo(map);
@@ -727,7 +774,7 @@ class GeoJSONExporter:
             return selected;
         }
 
-        function buildFilteredFeatureCollection(selectedLayers) {
+        function buildFilteredFeatureCollection(selectedLayers, differenceModeInfo) {
             if (!geojsonFeature || !geojsonFeature.features) { return geojsonFeature; }
             var filtered = geojsonFeature.features.filter(function(feature) {
                 var name = feature.properties ? feature.properties.layer_name : '';
@@ -738,6 +785,51 @@ class GeoJSONExporter:
                 features: filtered,
                 crs: geojsonFeature.crs
             };
+        }
+
+        function getDifferenceModeInfo(selectedLayers) {
+            if (!selectedLayers || selectedLayers.length < 2 || !geojsonFeature || !geojsonFeature.features) {
+                return null;
+            }
+
+            var baseLayer = selectedLayers[0];
+            var layerIndices = {};
+
+            for (var i = 0; i < geojsonFeature.features.length; i++) {
+                var props = geojsonFeature.features[i].properties || {};
+                var layerName = props.layer_name;
+                if (selectedLayers.indexOf(layerName) === -1) {
+                    continue;
+                }
+                var geometryKey = props.geometry_key;
+                if (!geometryKey) {
+                    continue;
+                }
+
+                if (!layerIndices[layerName]) {
+                    layerIndices[layerName] = {};
+                }
+                layerIndices[layerName][geometryKey] = String(props.class_value);
+            }
+
+            return {
+                baseLayer: baseLayer,
+                layerIndices: layerIndices
+            };
+        }
+
+        function isChangedFeature(props, differenceModeInfo, baseLayerIndex) {
+            if (!differenceModeInfo) {
+                return false;
+            }
+            var geometryKey = props.geometry_key;
+            if (!geometryKey) {
+                return true;
+            }
+            if (!Object.prototype.hasOwnProperty.call(baseLayerIndex, geometryKey)) {
+                return true;
+            }
+            return baseLayerIndex[geometryKey] !== String(props.class_value);
         }
 
         function buildMetricsHtml(metrics, selectedMetrics) {
@@ -760,10 +852,13 @@ class GeoJSONExporter:
             var metricText = selectedMetrics.length ? selectedMetrics.length + ' metric(s)' : 'no metrics';
             var summary = 'Showing ' + layerText + ', ' + metricText + '.';
             
-            // Add which metric is being used for coloring
-            if (selectedLayers.length > 0) {
-                var colorMetric = getColorMetric();
-                summary += '<br><strong>Map colors by:</strong> ' + colorMetric;
+            // Add active coloring mode
+            if (selectedLayers.length === 1) {
+                summary += '<br><strong>Map colors:</strong> single-layer base color';
+            } else if (selectedLayers.length >= 2) {
+                summary += '<br><strong>Map colors:</strong> base color + changed areas';
+                summary += '<br><strong>Base layer:</strong> ' + selectedLayers[0];
+                summary += '<br><strong>Comparing:</strong> ' + selectedLayers.slice(1).join(', ');
             }
             
             var panelSummary = document.getElementById('panel-summary');
@@ -960,6 +1055,8 @@ class GeoJSONExporter:
         function updateMap() {
             var selectedLayers = getSelectedValues('layer-list');
             var selectedMetrics = getSelectedValues('metric-list');
+            var singleLayerMode = selectedLayers.length === 1;
+            var differenceModeInfo = getDifferenceModeInfo(selectedLayers);
             updateSummary(selectedLayers, selectedMetrics);
             updateUrl(selectedLayers, selectedMetrics);
             updateDetails(selectedLayers, selectedMetrics);
@@ -968,13 +1065,20 @@ class GeoJSONExporter:
                 map.removeLayer(geojsonLayer);
             }
 
-            var filtered = buildFilteredFeatureCollection(selectedLayers);
+            var filtered = buildFilteredFeatureCollection(selectedLayers, differenceModeInfo);
             
             // Use the selected metric for coloring, or default to Patch Area
             var colorMetric = getColorMetric();
             var range = getMetricValueRange(selectedLayers, colorMetric);
             
-            if (range.min !== range.max) {
+            if (differenceModeInfo) {
+                createDifferenceLegend(differenceModeInfo, selectedLayers);
+            } else if (singleLayerMode) {
+                if (legendControl) {
+                    map.removeControl(legendControl);
+                    legendControl = null;
+                }
+            } else if (range.max > 0) {
                 createLegend(colorMetric, range.min, range.max);
             } else {
                 if (legendControl) {
@@ -985,19 +1089,78 @@ class GeoJSONExporter:
             
             geojsonLayer = L.geoJSON(filtered, {
                 style: function(feature) {
-                    var fillColor = '#08519c';
                     var props = feature.properties || {};
+                    var layerName = props.layer_name || '';
                     var metrics = normalizeMetrics(props);
+                    var fillColor = BASE_COLOR;
+
+                    // One selected layer: keep uniform base color.
+                    if (singleLayerMode) {
+                        return {
+                            color: '#333',
+                            weight: 1.5,
+                            opacity: 0.8,
+                            fillColor: fillColor,
+                            fillOpacity: 0.7
+                        };
+                    }
+
+                    // Multiple layers: color changed areas by metric, unchanged areas in base color.
+                    if (differenceModeInfo) {
+                        if (layerName === differenceModeInfo.baseLayer) {
+                            fillColor = BASE_COLOR;
+                        } else {
+                            var baseLayerIndex = differenceModeInfo.layerIndices[differenceModeInfo.baseLayer] || {};
+                            var changed = isChangedFeature(props, differenceModeInfo, baseLayerIndex);
+                            
+                            if (changed) {
+                                // Color changed areas by metric
+                                var metricValue = null;
+                                if (Object.prototype.hasOwnProperty.call(metrics, colorMetric)) {
+                                    var rawValue = metrics[colorMetric];
+                                    if (typeof rawValue === 'string') {
+                                        metricValue = parseFloat(rawValue.replace(/[^0-9.-]/g, ''));
+                                    } else {
+                                        metricValue = parseFloat(rawValue);
+                                    }
+                                } else if (props.patch_area && colorMetric === 'Patch Area (km²)') {
+                                    metricValue = props.patch_area;
+                                }
+                                
+                                if (metricValue !== null && !isNaN(metricValue) && range.max > 0) {
+                                    fillColor = getColor(metricValue, range.min, range.max, colorMetric);
+                                } else if (metricValue !== null && !isNaN(metricValue)) {
+                                    fillColor = getChangeColor(layerName, selectedLayers);
+                                } else {
+                                    fillColor = getChangeColor(layerName, selectedLayers);
+                                }
+                            } else {
+                                fillColor = BASE_COLOR;
+                            }
+                        }
+                        return {
+                            color: '#333',
+                            weight: 1.5,
+                            opacity: 0.8,
+                            fillColor: fillColor,
+                            fillOpacity: 0.7
+                        };
+                    }
                     
                     // Try to get the color metric value
                     var value = null;
                     if (Object.prototype.hasOwnProperty.call(metrics, colorMetric)) {
-                        value = parseFloat(metrics[colorMetric]);
+                        var rawValue = metrics[colorMetric];
+                        if (typeof rawValue === 'string') {
+                            value = parseFloat(rawValue.replace(/[^0-9.-]/g, ''));
+                        } else {
+                            value = parseFloat(rawValue);
+                        }
                     } else if (props.patch_area && colorMetric === 'Patch Area (km²)') {
                         value = props.patch_area;
                     }
                     
-                    if (value !== null && !isNaN(value) && range.min !== range.max) {
+                    if (value !== null && !isNaN(value) && range.max > 0) {
                         fillColor = getColor(value, range.min, range.max, colorMetric);
                     }
                     
@@ -1430,6 +1593,7 @@ class GeoJSONExporter:
                                 "layer_name": layer.name(),
                                 "patch_area": patch['area'],
                                 "class_value": patch['class_value'],
+                                "geometry_key": json.dumps(patch['geometry'], sort_keys=True, separators=(",", ":")),
                                 "metrics": metric_desc,
                                 "metrics_map": patch_metrics,
                                 "metrics_list": list(patch_metrics.keys()),
@@ -1457,6 +1621,16 @@ class GeoJSONExporter:
                         },
                         "properties": {
                             "layer_name": layer.name(),
+                            "geometry_key": json.dumps({
+                                "type": "Polygon",
+                                "coordinates": [[
+                                    [extent.xMinimum(), extent.yMinimum()],
+                                    [extent.xMaximum(), extent.yMinimum()],
+                                    [extent.xMaximum(), extent.yMaximum()],
+                                    [extent.xMinimum(), extent.yMaximum()],
+                                    [extent.xMinimum(), extent.yMinimum()]
+                                ]]
+                            }, sort_keys=True, separators=(",", ":")),
                             "metrics": metric_desc,
                             "metrics_map": layer_metrics,
                             "metrics_list": list(layer_metrics.keys()),
