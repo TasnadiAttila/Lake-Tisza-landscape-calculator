@@ -2,6 +2,7 @@ from abc import ABC
 from qgis.core import QgsCoordinateReferenceSystem, QgsVectorLayer
 from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
 import processing
+import math
 
 class PatchCohesionIndex(IMetricsCalculator, ABC):
     name = "Patch Cohesion Index"
@@ -55,12 +56,13 @@ class PatchCohesionIndex(IMetricsCalculator, ABC):
 
         cohesion = {}
         for cls, patches in class_patches.items():
-            sum_p = sum(p[1] for p in patches)
-            sum_pa = sum(p[1] * (p[0] ** 0.5) for p in patches)
+                        
+            sum_perimeter = sum(p[1] for p in patches)
+            sum_min_perimeter = sum(2 * math.sqrt(math.pi * p[0]) for p in patches)
 
-            if sum_pa == 0 or total_area == 0:
+            if sum_min_perimeter == 0:
                 cohesion[cls] = 0.0
             else:
-                cohesion[cls] = (1 - (sum_p / sum_pa)) * (1 - (1 / (total_area ** 0.5))) * 100
+                cohesion[cls] = (1 - (sum_perimeter / sum_min_perimeter)) * 100
 
         return cohesion
