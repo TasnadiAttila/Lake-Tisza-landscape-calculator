@@ -40,6 +40,10 @@ from .Controllers.CSVExporter import CSVExporter
 from .Controllers.BackgroundTaskWorker import MetricCalculationWorker, ExcelExportWorker
 import os.path
 import webbrowser
+import logging
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class TiszaToTajmetria:
@@ -166,7 +170,7 @@ class TiszaToTajmetria:
         renderer = layer.renderer()
         mapping = {}
 
-        print(f"Renderer type: {renderer.type()}")
+        LOGGER.debug("Renderer type: %s", renderer.type())
 
         if renderer.type() == 'paletted':
             classes = renderer.classes()
@@ -197,7 +201,7 @@ class TiszaToTajmetria:
             mapping["Altitude"] = renderer.altitude()
 
         else:
-            print("Unknown render type.")
+            LOGGER.debug("Unknown render type.")
 
         return mapping
 
@@ -206,10 +210,10 @@ class TiszaToTajmetria:
         UNIT_MAPPING = {
             "Effective Mesh Size": "km²",  
             "Euclidean Distance": "km",  
-            "Fractal Dimension Index": "Index (0-2)",
+            "Fractal Dimension Index": "Index (1-2)",
             "Greatest Patch Area": "km²",
             "Landscape Division": "Index (0-1)",
-            "Landscape Proportion": "%",
+            "Landscape Proportion": "Index (0-1)",
             "Land Cover": "%",
             "Total Landscape Area": "km²",  
             "Mean Patch Area": "km²",
@@ -219,10 +223,7 @@ class TiszaToTajmetria:
             "Patch Cohesion Index": "Index (0-100)",
             "Patch Density": "patches/km²",
             "Smallest Patch Area": "km²",
-            "Splitting Index": "Index (Dim.less)",
-            "CalculateEffectiveMeshSize": "km²",
-            "CalculateEuclidean": "km",
-            "LandCover": "km²",
+            "Splitting Index": "Index (>=1)",
         }
 
         selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
@@ -507,7 +508,7 @@ class TiszaToTajmetria:
                     export_paths.append(f"Wide CSV: {os.path.basename(wide_csv)}")
                 
             except Exception as e:
-                print(f"CSV export error: {e}")
+                LOGGER.exception("CSV export error")
                 self.iface.messageBar().pushMessage(
                     "Warning",
                     f"CSV export failed: {str(e)}",
@@ -540,10 +541,10 @@ class TiszaToTajmetria:
                     try:
                         webbrowser.open(html_url)
                     except Exception as e:
-                        print(f"Could not open map in browser: {e}")
+                        LOGGER.warning("Could not open map in browser: %s", e)
                         
             except Exception as e:
-                print(f"GeoJSON/Map export error: {e}")
+                LOGGER.exception("GeoJSON/Map export error")
                 self.iface.messageBar().pushMessage(
                     "Warning",
                     f"GeoJSON/Map export failed: {str(e)}",
@@ -608,7 +609,7 @@ class TiszaToTajmetria:
                 try:
                     webbrowser.open(html_url)
                 except Exception as e:
-                    print(f"Could not open map in browser: {e}")
+                    LOGGER.warning("Could not open map in browser: %s", e)
             else:
                 self.iface.messageBar().pushMessage(
                     "Warning",
