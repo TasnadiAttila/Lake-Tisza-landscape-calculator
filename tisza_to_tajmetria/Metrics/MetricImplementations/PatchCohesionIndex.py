@@ -52,26 +52,16 @@ class PatchCohesionIndex(IMetricsCalculator, ABC):
                 class_patches[cls] = []
             class_patches[cls].append((area, perimeter))
 
-        total_area = sum([p[0] for patches in class_patches.values() for p in patches])
-
         cohesion = {}
         for cls, patches in class_patches.items():
-            # Standard FRAGSTATS COHESION formula:
-            # COHESION = [1 - (Σp / Σ(p×√a))] × [1 - (1/√Z)]^-1 × 100
-            # where p=perimeter, a=area, Z=total landscape area
+            
             
             sum_p = sum(p[1] for p in patches)
             sum_p_sqrt_a = sum(p[1] * math.sqrt(p[0]) for p in patches)
             
-            if sum_p_sqrt_a == 0 or total_area == 0:
+            if sum_p_sqrt_a == 0:
                 cohesion[cls] = 0.0
             else:
-                # First term: 1 - (Σp / Σ(p×√a))
-                term1 = 1 - (sum_p / sum_p_sqrt_a)
-                
-                # Second term: [1 - (1/√Z)]^-1
-                term2 = (1 - (1 / math.sqrt(total_area))) ** -1
-                
-                cohesion[cls] = term1 * term2 * 100
+                cohesion[cls] = max(0.0, (1 - (sum_p / sum_p_sqrt_a)) * 100)
 
         return cohesion
