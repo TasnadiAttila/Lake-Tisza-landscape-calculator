@@ -5,3 +5,7 @@ tisza_to_tajmetria/__pycache__/
 **/__pycache__/
 .xlsx
 *.xlsx
+tisza_to_tajmetria/Controllers/*_summary.csv
+tisza_to_tajmetria/Controllers/*_wide.csv
+tisza_to_tajmetria/Controllers/landscape_metrics_*.geojson
+tisza_to_tajmetria/Controllers/landscape_metrics_*_map.html
