@@ -7,6 +7,10 @@ Provides non-blocking computation with progress reporting and cancellation suppo
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 import xlsxwriter
 import time
+import logging
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class MetricCalculationWorker(QThread):
@@ -56,6 +60,61 @@ class MetricCalculationWorker(QThread):
         if isinstance(value, (int, float)):
             return f"{value:.2f}"
         return str(value)
+
+    @staticmethod
+    def _get_metric_range(metric_name):
+        ranges = {
+            "Fractal Dimension Index": (1.0, 2.0),
+            "Patch Cohesion Index": (0.0, 100.0),
+            "Landscape Division": (0.0, 1.0),
+            "Landscape Proportion": (0.0, 1.0),
+            "Land Cover": (0.0, 100.0),
+            "Splitting Index": (1.0, None),
+            "Patch Density": (0.0, None),
+            "Number of Patches": (0.0, None),
+            "Effective Mesh Size": (0.0, None),
+            "Greatest Patch Area": (0.0, None),
+            "Smallest Patch Area": (0.0, None),
+            "Mean Patch Area": (0.0, None),
+            "Median Patch Area": (0.0, None),
+            "Euclidean Distance": (0.0, None),
+            "Nearest Neighbour Distance": (0.0, None),
+        }
+        return ranges.get(metric_name)
+
+    @staticmethod
+    def _is_in_range(value, min_value=None, max_value=None):
+        if not isinstance(value, (int, float)):
+            return True
+        if min_value is not None and value < min_value:
+            return False
+        if max_value is not None and value > max_value:
+            return False
+        return True
+
+    def _collect_range_warnings(self, metric_name, value):
+        range_info = self._get_metric_range(metric_name)
+        if range_info is None:
+            return []
+
+        min_value, max_value = range_info
+        warnings = []
+
+        if isinstance(value, dict):
+            for key, dict_value in value.items():
+                if self._is_in_range(dict_value, min_value, max_value):
+                    continue
+                warnings.append(
+                    f"{metric_name} value out of expected range for class {key}: {dict_value}"
+                )
+            return warnings
+
+        if not self._is_in_range(value, min_value, max_value):
+            warnings.append(
+                f"{metric_name} value out of expected range: {value}"
+            )
+
+        return warnings
         
     def run(self):
         """Execute the calculation in background thread."""
@@ -88,6 +147,19 @@ class MetricCalculationWorker(QThread):
                     
                     try:
                         value = metric_func(layer)
+
+                        validation_warnings = self._collect_range_warnings(metric_name, value)
+                        for warning in validation_warnings:
+                            LOGGER.warning("%s (%s)", warning, layer_name)
+                            data_to_write.append([
+                                layer_name,
+                                metric_name,
+                                "VALIDATION WARNING",
+                                warning,
+                                "N/A",
+                                None,
+                                None,
+                            ])
                         
                         # Store for GeoJSON export (simplified format)
                         layer_metrics[metric_name] = self._format_layer_metric_value(value)
