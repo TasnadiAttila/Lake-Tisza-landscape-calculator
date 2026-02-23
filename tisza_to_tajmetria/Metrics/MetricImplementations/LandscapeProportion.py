@@ -7,7 +7,6 @@ from qgis.core import (
     QgsProcessingContext
 )
 import processing
-import os
 
 class LandscapeProportion(IMetricsCalculator, ABC):
     """Calculate the Landscape Proportion (LP).
@@ -22,23 +21,18 @@ class LandscapeProportion(IMetricsCalculator, ABC):
         feedback = QgsProcessingFeedback()
         context = QgsProcessingContext()
 
-        temp_folder = os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp")
-        if not os.path.exists(temp_folder):
-            os.makedirs(temp_folder)
-        polygon_output = os.path.join(temp_folder, "temp_raster_to_polygon.gpkg")
-
-        processing.run(
+        polygon_output = processing.run(
             "gdal:polygonize",
             {
-                'INPUT': layer.source(),
+                'INPUT': layer,
                 'BAND': 1,
                 'FIELD': 'VALUE',
                 'EIGHT_CONNECTEDNESS': False,
-                'OUTPUT': polygon_output
+                'OUTPUT': 'TEMPORARY_OUTPUT'
             },
             feedback=feedback,
             context=context
-        )
+        )['OUTPUT']
 
         polygon_layer = QgsVectorLayer(polygon_output, "temp_polygons", "ogr")
         if not polygon_layer.isValid():
