@@ -1,6 +1,6 @@
 from abc import ABC
 from qgis.core import QgsCoordinateReferenceSystem, QgsVectorLayer
-from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
+from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 import processing
 import math
 
@@ -8,7 +8,7 @@ class PatchCohesionIndex(IMetricsCalculator, ABC):
     name = "Patch Cohesion Index"
 
     @staticmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         temp_layer = layer
 
         if layer.crs().isGeographic():
@@ -45,7 +45,7 @@ class PatchCohesionIndex(IMetricsCalculator, ABC):
         for feature in vector_layer.getFeatures():
             cls = feature['class']
             geom = feature.geometry()
-            area = geom.area()      # m²
+            area = geom.area()      # m
             perimeter = geom.length()  # m
 
             if cls not in class_patches:

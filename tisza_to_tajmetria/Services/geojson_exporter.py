@@ -422,7 +422,7 @@ class GeoJSONExporter:
             </div>
             
             <div class="filter-section" id="charts-section" style="border-top: 2px solid #08519c;">
-                <h2>📊 Statistics</h2>
+                <h2>Statistics</h2>
                 <div style="margin: 10px 0;">
                     <canvas id="metricsChart" height="200"></canvas>
                 </div>

@@ -21,45 +21,30 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
+
+import os.path
+
+from qgis.PyQt.QtCore import QCoreApplication, QSettings, QTranslator
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import Qgis, QgsColorRampShader
 
-
-# Initialize Qt resources from file resources.py
+from .Controllers.plugin_controller import PluginController
 from .resources import *
-import xlsxwriter
-# Import the code for the dialog
-from .tisza_to_tajmetria_dialog import TiszaToTajmetriaDialog
-# Import helpers
-from .Controllers.ComboBoxHandler import ComboBoxHandler
-from .Controllers.ExcelHelper import ExcelHelper
-from .Controllers.GeoJSONExporter import GeoJSONExporter
-from .Controllers.CSVExporter import CSVExporter
-from .Controllers.BackgroundTaskWorker import MetricCalculationWorker, ExcelExportWorker
-import os.path
-import webbrowser
-import logging
-
-
-LOGGER = logging.getLogger(__name__)
 
 
 class TiszaToTajmetria:
-    """QGIS Plugin Implementation."""
+    """QGIS Plugin entry point (Application layer)."""
 
     def __init__(self, iface):
-        """Constructor."""
         self.iface = iface
         self.plugin_dir = os.path.dirname(__file__)
 
-        # initialize locale
         locale = QSettings().value('locale/userLocale')[0:2]
         locale_path = os.path.join(
             self.plugin_dir,
             'i18n',
-            'TiszaToTajmetria_{}.qm'.format(locale))
+            'TiszaToTajmetria_{}.qm'.format(locale),
+        )
 
         if os.path.exists(locale_path):
             self.translator = QTranslator()
@@ -68,19 +53,9 @@ class TiszaToTajmetria:
 
         self.actions = []
         self.menu = self.tr(u'&Tiszta To Tajmetria')
-        self.first_start = None
-        self.dlg = None
-        
-        # Background task workers
-        self.calculation_worker = None
-        self.export_worker = None
-        
-        # Store calculation results for export
-        self.last_calculation_data = None
-        self.last_metric_data = None
+        self.controller = PluginController(iface)
 
     def tr(self, message):
-        """Get translation."""
         return QCoreApplication.translate('TiszaToTajmetria', message)
 
     def add_action(
@@ -93,8 +68,8 @@ class TiszaToTajmetria:
         add_to_toolbar=True,
         status_tip=None,
         whats_this=None,
-        parent=None):
-
+        parent=None,
+    ):
         icon = QIcon(icon_path)
         action = QAction(icon, text, parent)
         action.triggered.connect(callback)
@@ -113,525 +88,23 @@ class TiszaToTajmetria:
         self.actions.append(action)
         return action
 
-    def initGui(self):
-        """Create the menu entries and toolbar icons inside the QGIS GUI."""
+    def init_gui(self):
         icon_path = ':/plugins/tisza_to_tajmetria/icon.png'
         self.add_action(
             icon_path,
             text=self.tr(u'Calculate mosaicity'),
             callback=self.run,
-            parent=self.iface.mainWindow())
-        self.first_start = True
+            parent=self.iface.mainWindow(),
+        )
+
+    def initGui(self):
+        self.init_gui()
 
     def unload(self):
-        """Remove the plugin menu item and icon."""
         for action in self.actions:
             self.iface.removePluginMenu(self.tr(u'&Tiszta To Tajmetria'), action)
             self.iface.removeToolBarIcon(action)
 
     def run(self):
-        ExcelHelper.ensureXlsxwriterInstalled(self)
-
-        """Run method that performs all the real work."""
-        if self.first_start:
-            self.first_start = False
-            self.dlg = TiszaToTajmetriaDialog()
-
-            self.dlg.calculateButton.clicked.connect(self.onCalculateClicked)
-            self.dlg.exportButton.clicked.connect(self.onExportClicked)
-            self.dlg.cancelButton.clicked.connect(self.onCancelClicked)
-            self.dlg.saveFileDialog.setFilter("Excel files (*.xlsx);")
-
-            ComboBoxHandler.makeComboboxEditable(self.dlg.layerSelector)
-            ComboBoxHandler.makeComboboxEditable(self.dlg.metricSelector)
-
-            ComboBoxHandler.loadLayersToCombobox(self.dlg.layerSelector, ['raster'])
-            ComboBoxHandler.loadMetricsToCombobox(self.dlg.metricSelector)
-
-            self.dlg.saveFileDialog.setFilePath("")
-            
-            # Connect checkbox model signals to update button state
-            self.dlg.layerSelector.model().dataChanged.connect(self.updateExportButtonState)
-            self.dlg.layerSelector.model().rowsInserted.connect(self.updateExportButtonState)
-            self.dlg.layerSelector.model().rowsRemoved.connect(self.updateExportButtonState)
-            
-            self.dlg.metricSelector.model().dataChanged.connect(self.updateExportButtonState)
-            self.dlg.metricSelector.model().rowsInserted.connect(self.updateExportButtonState)
-            self.dlg.metricSelector.model().rowsRemoved.connect(self.updateExportButtonState)
-            
-            # Initial button state
-            self.updateExportButtonState()
-
-        self.dlg.show()
-        self.dlg.exec_()
-
-    @staticmethod
-    def get_land_cover_mapping_from_layer(layer):
-        renderer = layer.renderer()
-        mapping = {}
-
-        LOGGER.debug("Renderer type: %s", renderer.type())
-
-        if renderer.type() == 'paletted':
-            classes = renderer.classes()
-            for cls in classes:
-                mapping[float(cls.value)] = cls.label
-
-        elif renderer.type() == 'singlebandpseudocolor':
-            shader = renderer.shader()
-            if shader:
-                color_ramp_shader = shader.rasterShaderFunction()
-                if isinstance(color_ramp_shader, QgsColorRampShader):
-                    for item in color_ramp_shader.colorRampItemList():
-                        mapping[float(item.value)] = item.label
-
-        elif renderer.type() == 'singlebandgray':
-            mapping["min"] = layer.dataProvider().bandStatistics(1).minimumValue
-            mapping["max"] = layer.dataProvider().bandStatistics(1).maximumValue
-
-        elif renderer.type() == 'multibandcolor':
-            mapping["Red band"] = renderer.redBand()
-            mapping["Green band"] = renderer.greenBand()
-            mapping["Blue band"] = renderer.blueBand()
-
-        elif renderer.type() == 'hillshade':
-            mapping["Band"] = renderer.band()
-            mapping["Z factor"] = renderer.zFactor()
-            mapping["Azimuth"] = renderer.azimuth()
-            mapping["Altitude"] = renderer.altitude()
-
-        else:
-            LOGGER.debug("Unknown render type.")
-
-        return mapping
-
-    def onCalculateClicked(self):
-        """Handle calculate button click - start background calculation"""
-        UNIT_MAPPING = {
-            "Effective Mesh Size": "km²",  
-            "Euclidean Distance": "km",  
-            "Fractal Dimension Index": "Index (1-2)",
-            "Greatest Patch Area": "km²",
-            "Landscape Division": "Index (0-1)",
-            "Landscape Proportion": "Index (0-1)",
-            "Land Cover": "%",
-            "Total Landscape Area": "km²",  
-            "Mean Patch Area": "km²",
-            "Median Patch Area": "km²",
-            "Nearest Neighbour Distance": "km",
-            "Number of Patches": "patches",
-            "Patch Cohesion Index": "Index (0-100)",
-            "Patch Density": "patches/km²",
-            "Smallest Patch Area": "km²",
-            "Splitting Index": "Index (>=1)",
-        }
-
-        selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
-        if not selected_layers:
-            self.iface.messageBar().pushMessage(
-                "Error",
-                "No layer selected!",
-                level=Qgis.Warning,
-                duration=3
-            )
-            return
-
-        selected_metrics = ComboBoxHandler.getCheckedItems(self.dlg.metricSelector)
-        if not selected_metrics:
-            self.iface.messageBar().pushMessage(
-                "Error",
-                "No metric selected!",
-                level=Qgis.Warning,
-                duration=3
-            )
-            return
-
-        # Disable buttons during calculation
-        self.dlg.calculateButton.setEnabled(False)
-        self.dlg.exportButton.setEnabled(False)
-        
-        # Show progress UI
-        self.showProgress()
-
-        # Create and configure worker
-        self.calculation_worker = MetricCalculationWorker(
-            selected_layers,
-            selected_metrics,
-            self.get_land_cover_mapping_from_layer,
-            UNIT_MAPPING
-        )
-        
-        # Connect signals
-        self.calculation_worker.progress.connect(self.onProgressUpdate)
-        self.calculation_worker.finished_calculation.connect(self.onCalculationFinished)
-        self.calculation_worker.error.connect(self.onCalculationError)
-        
-        # Start calculation
-        self.calculation_worker.start()
-
-
-    def showProgress(self):
-        """Show progress bar and label"""
-        self.dlg.progressBar.setVisible(True)
-        self.dlg.progressLabel.setVisible(True)
-        self.dlg.cancelButton.setVisible(True)
-        self.dlg.cancelButton.setEnabled(True)
-    
-    def hideProgress(self):
-        """Hide progress bar and label"""
-        self.dlg.progressBar.setVisible(False)
-        self.dlg.progressLabel.setVisible(False)
-        self.dlg.cancelButton.setVisible(False)
-        self.dlg.cancelButton.setEnabled(False)
-        self.dlg.progressBar.setValue(0)
-        self.dlg.progressLabel.setText("Ready")
-    
-    def onProgressUpdate(self, percent, message):
-        """Handle progress updates from worker"""
-        self.dlg.progressBar.setValue(percent)
-        self.dlg.progressLabel.setText(message)
-    
-    def onCalculationFinished(self, data_to_write, metric_data):
-        """Handle calculation completion"""
-        self.hideProgress()
-        
-        # Store results for later export
-        self.last_calculation_data = data_to_write
-        self.last_metric_data = metric_data
-        
-        # Re-enable buttons
-        self.dlg.calculateButton.setEnabled(True)
-        self.dlg.exportButton.setEnabled(True)
-        
-        self.iface.messageBar().pushMessage(
-            "Success",
-            f"Calculation complete! {len(data_to_write)} metrics calculated.",
-            level=Qgis.Success,
-            duration=5
-        )
-        
-        # Clean up worker
-        if self.calculation_worker:
-            self.calculation_worker.deleteLater()
-            self.calculation_worker = None
-    
-    def onCalculationError(self, error_message):
-        """Handle calculation errors"""
-        self.hideProgress()
-        self.dlg.calculateButton.setEnabled(True)
-        self.dlg.exportButton.setEnabled(False)
-        
-        self.iface.messageBar().pushMessage(
-            "Error",
-            error_message,
-            level=Qgis.Critical,
-            duration=10
-        )
-        
-        # Clean up worker
-        if self.calculation_worker:
-            self.calculation_worker.deleteLater()
-            self.calculation_worker = None
-    
-    def onExportFinished(self, output_path):
-        """Handle Excel export completion"""
-        self.hideProgress()
-        
-        # Re-enable buttons
-        self.dlg.calculateButton.setEnabled(True)
-        self.dlg.exportButton.setEnabled(True)
-        
-        self.iface.messageBar().pushMessage(
-            "Success",
-            f"Data exported successfully to: {output_path}",
-            level=Qgis.Success,
-            duration=5
-        )
-        
-        # Clean up worker
-        if self.export_worker:
-            self.export_worker.deleteLater()
-            self.export_worker = None
-    
-    def onExportError(self, error_message):
-        """Handle export errors"""
-        self.hideProgress()
-        self.dlg.calculateButton.setEnabled(True)
-        self.dlg.exportButton.setEnabled(True)
-        
-        self.iface.messageBar().pushMessage(
-            "Error",
-            error_message,
-            level=Qgis.Critical,
-            duration=10
-        )
-        
-        # Clean up worker
-        if self.export_worker:
-            self.export_worker.deleteLater()
-            self.export_worker = None
-    
-    def onCancelClicked(self):
-        """Handle cancel button click"""
-        if self.calculation_worker and self.calculation_worker.isRunning():
-            self.calculation_worker.cancel()
-            self.dlg.progressLabel.setText("Cancelling...")
-            self.dlg.cancelButton.setEnabled(False)
-        
-        if self.export_worker and self.export_worker.isRunning():
-            self.export_worker.cancel()
-            self.dlg.progressLabel.setText("Cancelling...")
-            self.dlg.cancelButton.setEnabled(False)
-
-    def updateExportButtonState(self):
-        """Enable export button only if at least one layer and one metric are selected"""
-        selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
-        selected_metrics = ComboBoxHandler.getCheckedItems(self.dlg.metricSelector)
-        
-        # Enable button only if both layers and metrics are selected
-        is_enabled = len(selected_layers) > 0 and len(selected_metrics) > 0
-        self.dlg.exportButton.setEnabled(is_enabled)
-
-    def onExportClicked(self):
-        """Handle export button click - save Excel/CSV and generate GeoJSON + web map using previously calculated data"""
-        
-        # Check if calculation has been performed
-        if self.last_calculation_data is None or self.last_metric_data is None:
-            self.iface.messageBar().pushMessage(
-                "Error",
-                "Please run Calculate first before exporting!",
-                level=Qgis.Warning,
-                duration=5
-            )
-            return
-        
-        # Get output path
-        output_path = self.dlg.saveFileDialog.filePath()
-        
-        if not output_path:
-            self.iface.messageBar().pushMessage(
-                "Error",
-                "Please select an output file path first!",
-                level=Qgis.Warning,
-                duration=5
-            )
-            return
-        
-        # Check which export formats are selected
-        export_excel = self.dlg.exportExcelCheckbox.isChecked()
-        export_csv = self.dlg.exportCsvCheckbox.isChecked()
-        export_map = self.dlg.exportMapCheckbox.isChecked()
-        
-        if not (export_excel or export_csv or export_map):
-            self.iface.messageBar().pushMessage(
-                "Warning",
-                "Please select at least one export format!",
-                level=Qgis.Warning,
-                duration=5
-            )
-            return
-        
-        # Disable buttons during export
-        self.dlg.calculateButton.setEnabled(False)
-        self.dlg.exportButton.setEnabled(False)
-        
-        # Show progress UI
-        self.showProgress()
-        
-        # Define headers
-        headers = [
-            "Layer Name",
-            "Metric Name",
-            "Statistic Detail",
-            "Value",
-            "Unit",
-            "Class ID",
-            "Class Name",
-        ]
-        
-        # Export to selected formats
-        export_paths = []
-        
-        # Export Excel if selected
-        if export_excel:
-            excel_path = output_path if output_path.lower().endswith('.xlsx') else output_path + '.xlsx'
-            
-            # Create and configure Excel export worker
-            self.export_worker = ExcelExportWorker(
-                self.last_calculation_data,
-                headers,
-                excel_path
-            )
-            
-            # Connect signals
-            self.export_worker.progress.connect(self.onProgressUpdate)
-            self.export_worker.finished_export.connect(lambda path: self.onFormatExportFinished(path, export_csv, export_map, output_path, headers))
-            self.export_worker.error.connect(self.onExportError)
-            
-            # Start export
-            self.export_worker.start()
-        else:
-            # Skip Excel, proceed directly to other formats
-            self.onFormatExportFinished(None, export_csv, export_map, output_path, headers)
-    
-    def onFormatExportFinished(self, excel_path, export_csv, export_map, base_output_path, headers):
-        """Handle completion of one export format and proceed to others"""
-        export_paths = []
-        
-        if excel_path:
-            export_paths.append(f"Excel: {os.path.basename(excel_path)}")
-        
-        # Export CSV if selected
-        if export_csv:
-            try:
-                csv_path = base_output_path.replace('.xlsx', '') if base_output_path.lower().endswith('.xlsx') else base_output_path
-                csv_path = csv_path + '.csv' if not csv_path.lower().endswith('.csv') else csv_path
-                
-                self.dlg.progressLabel.setText("Exporting to CSV...")
-                self.dlg.progressBar.setValue(60)
-                
-                # Export main CSV (tidy format)
-                success = CSVExporter.export_to_csv(self.last_calculation_data, csv_path, headers)
-                if success:
-                    export_paths.append(f"CSV: {os.path.basename(csv_path)}")
-                
-                # Also export summary CSV
-                CSVExporter.export_summary_csv(self.last_metric_data, csv_path)
-                summary_csv = csv_path.replace('.csv', '_summary.csv')
-                if os.path.exists(summary_csv):
-                    export_paths.append(f"Summary CSV: {os.path.basename(summary_csv)}")
-                
-                # Also export wide format CSV
-                CSVExporter.export_wide_format_csv(self.last_calculation_data, csv_path)
-                wide_csv = csv_path.replace('.csv', '_wide.csv')
-                if os.path.exists(wide_csv):
-                    export_paths.append(f"Wide CSV: {os.path.basename(wide_csv)}")
-                
-            except Exception as e:
-                LOGGER.exception("CSV export error")
-                self.iface.messageBar().pushMessage(
-                    "Warning",
-                    f"CSV export failed: {str(e)}",
-                    level=Qgis.Warning,
-                    duration=5
-                )
-        
-        # Export GeoJSON and map if selected
-        if export_map:
-            try:
-                selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
-                output_dir = os.path.dirname(base_output_path) or "."
-                
-                self.dlg.progressLabel.setText("Generating GeoJSON and web map...")
-                self.dlg.progressBar.setValue(80)
-                
-                geojson_path, html_url = GeoJSONExporter.export_and_generate_map(
-                    selected_layers,
-                    self.last_metric_data,
-                    output_dir
-                )
-                
-                if geojson_path:
-                    export_paths.append(f"GeoJSON: {os.path.basename(geojson_path)}")
-                
-                if geojson_path and html_url:
-                    export_paths.append(f"Map: {html_url}")
-                    
-                    # Open web map in browser
-                    try:
-                        webbrowser.open(html_url)
-                    except Exception as e:
-                        LOGGER.warning("Could not open map in browser: %s", e)
-                        
-            except Exception as e:
-                LOGGER.exception("GeoJSON/Map export error")
-                self.iface.messageBar().pushMessage(
-                    "Warning",
-                    f"GeoJSON/Map export failed: {str(e)}",
-                    level=Qgis.Warning,
-                    duration=5
-                )
-        
-        # Finalize export
-        self.hideProgress()
-        self.dlg.calculateButton.setEnabled(True)
-        self.dlg.exportButton.setEnabled(True)
-        
-        # Show success message
-        if export_paths:
-            message = "Data exported successfully!\\n" + "\\n".join(export_paths)
-            self.iface.messageBar().pushMessage(
-                "Success",
-                message,
-                level=Qgis.Success,
-                duration=10
-            )
-        
-        # Clean up worker
-        if self.export_worker:
-            self.export_worker.deleteLater()
-            self.export_worker = None
-    
-    def onExportFinishedWithMap(self, output_path):
-        """Handle Excel export completion and generate map"""
-        # Get layers and metrics for map generation
-        selected_layers = ComboBoxHandler.getCheckedItems(self.dlg.layerSelector)
-        
-        # Step 2: Export to GeoJSON and generate web map
-        try:
-            # Get directory from output path
-            output_dir = os.path.dirname(output_path) or "."
-            
-            self.dlg.progressLabel.setText("Generating GeoJSON and web map...")
-            self.dlg.progressBar.setValue(95)
-            
-            geojson_path, html_url = GeoJSONExporter.export_and_generate_map(
-                selected_layers,
-                self.last_metric_data,
-                output_dir
-            )
-            
-            self.hideProgress()
-            
-            # Re-enable buttons
-            self.dlg.calculateButton.setEnabled(True)
-            self.dlg.exportButton.setEnabled(True)
-            
-            if geojson_path and html_url:
-                self.iface.messageBar().pushMessage(
-                    "Success",
-                    f"Data exported successfully!\nExcel: {os.path.basename(output_path)}\nGeoJSON: {os.path.basename(geojson_path)}\nMap: {html_url}",
-                    level=Qgis.Success,
-                    duration=10
-                )
-                
-                # Open web map in browser via local server
-                try:
-                    webbrowser.open(html_url)
-                except Exception as e:
-                    LOGGER.warning("Could not open map in browser: %s", e)
-            else:
-                self.iface.messageBar().pushMessage(
-                    "Warning",
-                    f"Excel exported successfully to {output_path}, but GeoJSON/map generation failed!",
-                    level=Qgis.Warning,
-                    duration=10
-                )
-        
-        except Exception as e:
-            self.hideProgress()
-            self.dlg.calculateButton.setEnabled(True)
-            self.dlg.exportButton.setEnabled(True)
-            
-            self.iface.messageBar().pushMessage(
-                "Warning",
-                f"Excel exported successfully, but map generation failed: {str(e)}",
-                level=Qgis.Warning,
-                duration=10
-            )
-        
-        # Clean up worker
-        if self.export_worker:
-            self.export_worker.deleteLater()
-            self.export_worker = None
+        self.controller.run()
 

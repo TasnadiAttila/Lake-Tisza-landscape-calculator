@@ -1,7 +1,7 @@
-from abc import ABC
+﻿from abc import ABC
 from collections import deque
 from qgis.core import QgsCoordinateReferenceSystem
-from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
+from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 import processing
 
 
@@ -9,7 +9,7 @@ class NumberOfPatches(IMetricsCalculator, ABC):
     name = "Number of Patches"
 
     @staticmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         temp_layer = layer
 
         if layer.crs().isGeographic():

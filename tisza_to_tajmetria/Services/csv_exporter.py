@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 CSV exporter for landscape metrics
 Exports calculation results in tidy data format for easy analysis

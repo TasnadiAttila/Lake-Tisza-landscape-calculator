@@ -1,7 +1,7 @@
-from abc import ABC
+﻿from abc import ABC
 from qgis.core import QgsCoordinateReferenceSystem
-from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
-from ..Helper import bfs_collect
+from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
+from ..helper import bfs_collect
 import processing
 import math
 
@@ -17,7 +17,7 @@ class Euclidean(IMetricsCalculator, ABC):
     name = "Euclidean Distance"
 
     @staticmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         temp_layer = layer
 
         if layer.crs().isGeographic():

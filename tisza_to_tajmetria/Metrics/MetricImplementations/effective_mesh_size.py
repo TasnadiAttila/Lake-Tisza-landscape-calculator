@@ -1,12 +1,12 @@
-from abc import ABC
-from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
+﻿from abc import ABC
+from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 
 class EffectiveMeshSize(IMetricsCalculator, ABC):
     """Calculate effective mesh size in square kilometers"""
     name = "Effective Mesh Size"
 
     @staticmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         provider = layer.dataProvider()
         extent = layer.extent()
         pixel_size_x = layer.rasterUnitsPerPixelX()

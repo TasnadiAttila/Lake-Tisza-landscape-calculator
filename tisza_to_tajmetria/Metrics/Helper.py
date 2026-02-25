@@ -1,4 +1,4 @@
-from collections import deque
+﻿from collections import deque
 
 def bfs(start_row, start_col, class_value, context):
     block = context["block"]

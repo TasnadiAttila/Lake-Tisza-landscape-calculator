@@ -1,23 +1,22 @@
-from qgis.core import QgsProject
+﻿from qgis.core import QgsProject
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
-from PyQt5 import QtWidgets
 
-from tisza_to_tajmetria.Metrics.MetricCollector import Metrics
+from tisza_to_tajmetria.Metrics.metric_collector import Metrics
 
 
-class ComboBoxHandler:
+class ComboBoxViewHelper:
     ALL_NONE_TEXT = "All / None"
     DEFAULT_FILTER_DELAY_MS = 400
     DEFAULT_MAX_SELECTED_LABELS = 3
 
     @staticmethod
-    def makeComboboxEditable(combobox):
+    def make_combobox_editable(combobox):
         combobox.setEditable(True)
         combobox.lineEdit().setPlaceholderText("Search...")
 
     @staticmethod
-    def loadLayersToCombobox(combobox, layer_types=None):
+    def load_layers_to_combobox(combobox, layer_types=None):
         if layer_types is None:
             layer_types = ['raster']
 
@@ -25,10 +24,10 @@ class ComboBoxHandler:
         layers = QgsProject.instance().mapLayers().values()
         model = QStandardItemModel(combobox)
 
-        all_none_item = QStandardItem(ComboBoxHandler.ALL_NONE_TEXT)
+        all_none_item = QStandardItem(ComboBoxViewHelper.ALL_NONE_TEXT)
         all_none_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
         all_none_item.setData(Qt.Unchecked, Qt.CheckStateRole)
-        all_none_item.setData(ComboBoxHandler.ALL_NONE_TEXT, Qt.UserRole)
+        all_none_item.setData(ComboBoxViewHelper.ALL_NONE_TEXT, Qt.UserRole)
         model.appendRow(all_none_item)
 
         found_layers = False
@@ -55,51 +54,50 @@ class ComboBoxHandler:
             model.appendRow(item)
 
         combobox.setModel(model)
-        ComboBoxHandler.setupCommonFeatures(combobox)
+        ComboBoxViewHelper.setup_common_features(combobox)
         return combobox
 
     @staticmethod
-    def loadMetricsToCombobox(combobox):
+    def load_metrics_to_combobox(combobox):
         combobox.clear()
         model = QStandardItemModel(combobox)
 
-        all_none_item = QStandardItem(ComboBoxHandler.ALL_NONE_TEXT)
+        all_none_item = QStandardItem(ComboBoxViewHelper.ALL_NONE_TEXT)
         all_none_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
         all_none_item.setData(Qt.Unchecked, Qt.CheckStateRole)
-        all_none_item.setData(ComboBoxHandler.ALL_NONE_TEXT, Qt.UserRole)
+        all_none_item.setData(ComboBoxViewHelper.ALL_NONE_TEXT, Qt.UserRole)
         model.appendRow(all_none_item)
 
         for metric in Metrics:
-            item = QStandardItem(metric.getMetricName)
+            item = QStandardItem(metric.metric_name)
             item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
             item.setData(Qt.Unchecked, Qt.CheckStateRole)
-            item.setData((metric.getMetricCalculation(), metric.getMetricName), Qt.UserRole)
+            item.setData((metric.get_metric_calculation(), metric.metric_name), Qt.UserRole)
             model.appendRow(item)
 
         combobox.setModel(model)
-        ComboBoxHandler.setupCommonFeatures(combobox)
+        ComboBoxViewHelper.setup_common_features(combobox)
         return combobox
 
     @staticmethod
-    def loadDiagramMetricsFromSelectedMetrics(diagram_combobox, selected_metrics):
+    def load_diagram_metrics_from_selected_metrics(diagram_combobox, selected_metrics):
         previous_checked = {
-            metric_name for _, metric_name in ComboBoxHandler.getCheckedItems(diagram_combobox)
+            metric_name for _, metric_name in ComboBoxViewHelper.get_checked_items(diagram_combobox)
         }
 
         diagram_combobox.clear()
         model = QStandardItemModel(diagram_combobox)
 
-        all_none_item = QStandardItem(ComboBoxHandler.ALL_NONE_TEXT)
+        all_none_item = QStandardItem(ComboBoxViewHelper.ALL_NONE_TEXT)
         all_none_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
         all_none_item.setData(Qt.Unchecked, Qt.CheckStateRole)
-        all_none_item.setData(ComboBoxHandler.ALL_NONE_TEXT, Qt.UserRole)
+        all_none_item.setData(ComboBoxViewHelper.ALL_NONE_TEXT, Qt.UserRole)
         model.appendRow(all_none_item)
 
         for calc_func, metric_name in selected_metrics:
             item = QStandardItem(metric_name)
             item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
 
-            # ✅ Visszaállítjuk a korábban kiválasztottakat
             if metric_name in previous_checked:
                 item.setData(Qt.Checked, Qt.CheckStateRole)
             else:
@@ -109,18 +107,18 @@ class ComboBoxHandler:
             model.appendRow(item)
 
         diagram_combobox.setModel(model)
-        ComboBoxHandler.setupCommonFeatures(diagram_combobox)
+        ComboBoxViewHelper.setup_common_features(diagram_combobox)
         return diagram_combobox
 
     @staticmethod
-    def setupCommonFeatures(combobox, filter_delay_ms=None, max_selected_labels=None):
-        ComboBoxHandler.makeComboboxEditable(combobox)
-        ComboBoxHandler.keepPopupOpenOnClick(combobox)
+    def setup_common_features(combobox, filter_delay_ms=None, max_selected_labels=None):
+        ComboBoxViewHelper.make_combobox_editable(combobox)
+        ComboBoxViewHelper.keep_popup_open_on_click(combobox)
 
         if filter_delay_ms is None:
-            filter_delay_ms = ComboBoxHandler.DEFAULT_FILTER_DELAY_MS
+            filter_delay_ms = ComboBoxViewHelper.DEFAULT_FILTER_DELAY_MS
         if max_selected_labels is None:
-            max_selected_labels = ComboBoxHandler.DEFAULT_MAX_SELECTED_LABELS
+            max_selected_labels = ComboBoxViewHelper.DEFAULT_MAX_SELECTED_LABELS
 
         combobox.setProperty("maxSelectedLabels", max_selected_labels)
         combobox.setProperty("filterDelayMs", filter_delay_ms)
@@ -134,7 +132,7 @@ class ComboBoxHandler:
                 pass
 
         def on_item_changed():
-            ComboBoxHandler.updateLineEditText(combobox)
+            ComboBoxViewHelper.update_line_edit_text(combobox)
 
         combobox.model().itemChanged.connect(on_item_changed)
         combobox.setProperty("itemChangedModel", combobox.model())
@@ -154,7 +152,7 @@ class ComboBoxHandler:
 
             def on_filter_timeout():
                 pending_text = combobox.property("pendingFilterText") or ""
-                ComboBoxHandler.filterModel(combobox, pending_text)
+                ComboBoxViewHelper.filter_model(combobox, pending_text)
 
             filter_timer.timeout.connect(on_filter_timeout)
             combobox.setProperty("filterTimer", filter_timer)
@@ -167,10 +165,10 @@ class ComboBoxHandler:
         combobox.lineEdit().textChanged.connect(on_text_changed)
         combobox.setProperty("filterTextChangedHandler", on_text_changed)
 
-        ComboBoxHandler.updateLineEditText(combobox)
+        ComboBoxViewHelper.update_line_edit_text(combobox)
 
     @staticmethod
-    def handleAllNoneItem(combobox):
+    def handle_all_none_item(combobox):
         model = combobox.model()
 
         model.blockSignals(True)
@@ -202,7 +200,7 @@ class ComboBoxHandler:
 
         all_none_item.setCheckState(Qt.Unchecked)
 
-        ComboBoxHandler.updateLineEditText(combobox)
+        ComboBoxViewHelper.update_line_edit_text(combobox)
 
         combobox.lineEdit().blockSignals(False)
         model.blockSignals(False)
@@ -211,17 +209,17 @@ class ComboBoxHandler:
             model.dataChanged.emit(model.index(0, 0), model.index(model.rowCount() - 1, 0))
 
     @staticmethod
-    def keepPopupOpenOnClick(combobox):
+    def keep_popup_open_on_click(combobox):
         view = combobox.view()
 
         def handle_press(index):
             item = combobox.model().itemFromIndex(index)
             if item and item.isEnabled():
-                if item.text() == ComboBoxHandler.ALL_NONE_TEXT:
+                if item.text() == ComboBoxViewHelper.ALL_NONE_TEXT:
                     new_state = Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
                     item.setCheckState(new_state)
 
-                    ComboBoxHandler.handleAllNoneItem(combobox)
+                    ComboBoxViewHelper.handle_all_none_item(combobox)
 
                 elif item.flags() & Qt.ItemIsUserCheckable:
                     new_state = Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
@@ -237,12 +235,12 @@ class ComboBoxHandler:
         view.pressed.connect(handle_press)
 
     @staticmethod
-    def updateLineEditText(combobox):
+    def update_line_edit_text(combobox):
         checked_items = []
         model = combobox.model()
         for i in range(model.rowCount()):
             item = model.item(i)
-            if item and item.checkState() == Qt.Checked and item.text() != ComboBoxHandler.ALL_NONE_TEXT:
+            if item and item.checkState() == Qt.Checked and item.text() != ComboBoxViewHelper.ALL_NONE_TEXT:
                 checked_items.append(item.text())
 
         filter_timer = combobox.property("filterTimer")
@@ -252,7 +250,7 @@ class ComboBoxHandler:
 
         max_selected_labels = combobox.property("maxSelectedLabels")
         if max_selected_labels is None:
-            max_selected_labels = ComboBoxHandler.DEFAULT_MAX_SELECTED_LABELS
+            max_selected_labels = ComboBoxViewHelper.DEFAULT_MAX_SELECTED_LABELS
 
         if len(checked_items) == 0:
             display_text = ""
@@ -266,46 +264,39 @@ class ComboBoxHandler:
         combobox.lineEdit().blockSignals(False)
 
     @staticmethod
-    def filterModel(combobox, text):
+    def filter_model(combobox, text):
         model = combobox.model()
         search_term = text.lower().strip()
 
-        # Store which items are checked so filtering doesn't hide them
         checked_items = [
             model.item(i).text() for i in range(model.rowCount())
             if model.item(i) and model.item(i).checkState() == Qt.Checked
-            and model.item(i).text() != ComboBoxHandler.ALL_NONE_TEXT
+            and model.item(i).text() != ComboBoxViewHelper.ALL_NONE_TEXT
         ]
 
-        # Avoid interfering with typing when the text is equal to checked items string
         joined_checked = ", ".join(checked_items).lower()
         if search_term == "" or search_term == joined_checked:
             for i in range(model.rowCount()):
                 combobox.view().setRowHidden(i, False)
-            return  # 🔸 don't reopen popup or rewrite text
+            return
 
-        # Filtering logic
         for i in range(model.rowCount()):
             item = model.item(i)
             if item:
                 item_text = item.text().lower()
-                if item_text == ComboBoxHandler.ALL_NONE_TEXT.lower():
+                if item_text == ComboBoxViewHelper.ALL_NONE_TEXT.lower():
                     combobox.view().setRowHidden(i, False)
                     continue
 
                 is_hidden = search_term not in item_text and item.checkState() != Qt.Checked
                 combobox.view().setRowHidden(i, is_hidden)
 
-        # 🔸 Don't reopen popup while typing, it causes focus loss
-        # combobox.showPopup()  # <-- remove this line
-
-
     @staticmethod
-    def getCheckedItems(combobox):
+    def get_checked_items(combobox):
         checked_items_data = []
         model = combobox.model()
         for i in range(model.rowCount()):
             item = model.item(i)
-            if item and item.checkState() == Qt.Checked and item.text() != ComboBoxHandler.ALL_NONE_TEXT:
+            if item and item.checkState() == Qt.Checked and item.text() != ComboBoxViewHelper.ALL_NONE_TEXT:
                 checked_items_data.append(item.data(Qt.UserRole))
         return checked_items_data

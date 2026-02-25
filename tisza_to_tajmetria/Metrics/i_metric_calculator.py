@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+﻿from abc import ABC, abstractmethod
 
 class IMetricsCalculator(ABC):
 
@@ -6,5 +6,5 @@ class IMetricsCalculator(ABC):
 
     @staticmethod
     @abstractmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         pass

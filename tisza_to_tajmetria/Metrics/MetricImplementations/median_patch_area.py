@@ -1,7 +1,7 @@
-from abc import ABC
-from ..Helper import bfs
+﻿from abc import ABC
+from ..helper import bfs
 from qgis.core import QgsCoordinateReferenceSystem, QgsProject
-from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
+from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 import processing
 import statistics
 
@@ -9,7 +9,7 @@ class MedianPatchArea(IMetricsCalculator, ABC):
     name = "Median Patch Area"
 
     @staticmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         temp_layer = layer
 
         if layer.crs().isGeographic():

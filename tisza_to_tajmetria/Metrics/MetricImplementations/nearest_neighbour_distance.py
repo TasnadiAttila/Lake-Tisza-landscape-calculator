@@ -1,7 +1,7 @@
-from abc import ABC
-from ..Helper import bfs_collect
+﻿from abc import ABC
+from ..helper import bfs_collect
 from qgis.core import QgsCoordinateReferenceSystem
-from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
+from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 import processing
 import math
 
@@ -9,7 +9,7 @@ class NearestNeighbourDistance(IMetricsCalculator, ABC):
     name = "Nearest Neighbour Distance"
 
     @staticmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         """Calculate average nearest neighbour distance (per class) in kilometers.
 
         For each land cover class a centroid is computed for every contiguous patch.

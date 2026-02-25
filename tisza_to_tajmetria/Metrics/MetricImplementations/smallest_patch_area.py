@@ -1,14 +1,14 @@
 from abc import ABC
-from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
+from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 import numpy as np
 from scipy import ndimage
 
-class SplittingIndex(IMetricsCalculator, ABC):
-    """Calculate Splitting Index per class"""
-    name = "Splitting Index"
+class SmallestPatchArea(IMetricsCalculator, ABC):
+    """Calculate the smallest patch area per class in km² (ignores background)"""
+    name = "Smallest Patch Area"
 
     @staticmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         provider = layer.dataProvider()
         pixel_size_x = layer.rasterUnitsPerPixelX()
         pixel_size_y = layer.rasterUnitsPerPixelY()
@@ -16,7 +16,6 @@ class SplittingIndex(IMetricsCalculator, ABC):
         width = layer.width()
         height = layer.height()
 
-        # Raszter beolvasása
         block = provider.block(1, layer.extent(), width, height)
         raster_array = np.zeros((height, width), dtype=int)
 
@@ -28,11 +27,11 @@ class SplittingIndex(IMetricsCalculator, ABC):
                 else:
                     raster_array[row, col] = int(val)
 
-        splitting_index = {}
+        smallest_patches = {}
 
         for val in np.unique(raster_array):
             if val == 0:
-                continue  # háttér kizárása
+                continue  # háttér teljes kizárása
 
             binary_mask = (raster_array == val).astype(int)
             labeled_array, num_features = ndimage.label(binary_mask)
@@ -44,8 +43,6 @@ class SplittingIndex(IMetricsCalculator, ABC):
                 patch_areas.append(patch_size_area_km2)
 
             if patch_areas:
-                total_area = sum(patch_areas)
-                SI = (total_area**2) / sum(a**2 for a in patch_areas)
-                splitting_index[val] = SI
+                smallest_patches[val] = min(patch_areas)
 
-        return splitting_index
+        return smallest_patches

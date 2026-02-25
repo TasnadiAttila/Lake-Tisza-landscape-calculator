@@ -1,4 +1,4 @@
-import xlsxwriter
+﻿import xlsxwriter
 import subprocess
 import sys
 
@@ -11,7 +11,7 @@ except ImportError:
 
 class ExcelHelper:
     @staticmethod
-    def ensureXlsxwriterInstalled(self):
+    def ensure_xlsxwriter_installed(self):
         try:
             import xlsxwriter
         except ModuleNotFoundError:
@@ -26,7 +26,7 @@ class ExcelHelper:
             import xlsxwriter
 
     @staticmethod
-    def createOutputExcelFile(filePath):
+    def create_output_excel_file(filePath):
         wb = xlsxwriter.Workbook(filePath)
         ws = wb.add_worksheet()
         wb.close()

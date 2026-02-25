@@ -1,5 +1,5 @@
-from abc import ABC
-from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
+﻿from abc import ABC
+from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 from qgis.core import (
     QgsRasterLayer,
     QgsVectorLayer,
@@ -14,7 +14,7 @@ class GreatestPatchArea(IMetricsCalculator, ABC):
     name = "Greatest Patch Area"
 
     @staticmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         if not isinstance(layer, QgsRasterLayer):
             raise TypeError("Input layer must be a raster layer")
 

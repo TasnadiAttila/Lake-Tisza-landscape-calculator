@@ -1,15 +1,15 @@
-from abc import ABC
+﻿from abc import ABC
 from qgis.core import QgsCoordinateReferenceSystem, QgsProject
-from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
+from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 import processing
-from ..Helper import bfs
+from ..helper import bfs
 
 
 class MeanPatchArea(IMetricsCalculator, ABC):
     name = "Mean Patch Area"
 
     @staticmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         temp_layer = layer
 
         if layer.crs().isGeographic():

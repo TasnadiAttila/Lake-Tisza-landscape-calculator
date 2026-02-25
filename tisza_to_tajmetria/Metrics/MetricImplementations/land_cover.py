@@ -1,5 +1,5 @@
-from abc import ABC
-from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
+﻿from abc import ABC
+from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 
 class LandCover(IMetricsCalculator, ABC):
     """
@@ -8,7 +8,7 @@ class LandCover(IMetricsCalculator, ABC):
     name = "Land Cover"
 
     @staticmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         provider = layer.dataProvider()
 
         extent = layer.extent()

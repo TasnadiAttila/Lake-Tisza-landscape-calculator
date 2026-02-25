@@ -1,4 +1,4 @@
-from openpyxl import load_workbook
+﻿from openpyxl import load_workbook
 from openpyxl.chart import BarChart, Reference
 from openpyxl.chart.label import DataLabelList
 import re

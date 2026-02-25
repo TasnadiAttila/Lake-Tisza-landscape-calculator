@@ -1,5 +1,5 @@
-from abc import ABC
-from tisza_to_tajmetria.Metrics.IMetricCalculator import IMetricsCalculator
+﻿from abc import ABC
+from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 import numpy as np
 import math
 
@@ -9,7 +9,7 @@ class FractalDimensionIndex(IMetricsCalculator, ABC):
     name = "Fractal Dimension Index"
 
     @staticmethod
-    def calculateMetric(layer):
+    def calculate_metric(layer):
         provider = layer.dataProvider()
         pixel_size_x = layer.rasterUnitsPerPixelX()
         pixel_size_y = layer.rasterUnitsPerPixelY()

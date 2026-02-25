@@ -25,7 +25,7 @@
 
 
 # noinspection PyPep8Naming
-def classFactory(iface):  # pylint: disable=invalid-name
+def class_factory(iface):
     """Load TiszaToTajmetria class from file TiszaToTajmetria.
 
     :param iface: A QGIS interface instance.
@@ -34,3 +34,7 @@ def classFactory(iface):  # pylint: disable=invalid-name
     #
     from .tisza_to_tajmetria import TiszaToTajmetria
     return TiszaToTajmetria(iface)
+
+
+def classFactory(iface):  # pylint: disable=invalid-name
+    return class_factory(iface)
