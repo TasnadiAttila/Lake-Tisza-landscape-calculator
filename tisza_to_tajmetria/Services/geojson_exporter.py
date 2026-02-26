@@ -234,6 +234,15 @@ class GeoJSONExporter:
             color: #333;
             background: #ffffff;
         }
+
+        .color-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+            font-size: 12px;
+            color: #333;
+        }
         
         .summary {
             margin-top: 10px;
@@ -415,6 +424,10 @@ class GeoJSONExporter:
                 <h2>Map Coloring</h2>
                 <input type="text" id="color-metric-search" class="search-input" placeholder="Search color metric..." />
                 <select id="color-metric-select" class="color-select"></select>
+                <label class="color-toggle" for="color-enabled">
+                    <input type="checkbox" id="color-enabled" unchecked />
+                    Enable metric coloring
+                </label>
             </div>
             
             <div class="filter-section">
@@ -585,10 +598,47 @@ class GeoJSONExporter:
             legendControl.addTo(map);
         }
 
-        function createDifferenceLegend(differenceModeInfo, selectedLayers) {
+        function createDifferenceLegend(differenceModeInfo, selectedLayers, colorMetric, range) {
             if (legendControl) {
                 map.removeControl(legendControl);
                 legendControl = null;
+            }
+
+            var fallbackLayers = {};
+            if (range && range.max > 0 && colorMetric && geojsonFeature && geojsonFeature.features) {
+                var baseLayerIndex = differenceModeInfo.layerIndices[differenceModeInfo.baseLayer] || {};
+                for (var fi = 0; fi < geojsonFeature.features.length; fi++) {
+                    var feature = geojsonFeature.features[fi];
+                    var props = feature.properties || {};
+                    var layerName = props.layer_name || '';
+
+                    if (selectedLayers.indexOf(layerName) <= 0) {
+                        continue;
+                    }
+
+                    if (!isChangedFeature(props, differenceModeInfo, baseLayerIndex)) {
+                        continue;
+                    }
+
+                    var metricValue = null;
+                    if (colorMetric === 'Patch Area (km²)' && props.patch_area) {
+                        metricValue = props.patch_area;
+                    } else {
+                        var metrics = normalizeMetrics(props);
+                        if (Object.prototype.hasOwnProperty.call(metrics, colorMetric)) {
+                            var rawValue = metrics[colorMetric];
+                            if (typeof rawValue === 'string') {
+                                metricValue = parseFloat(rawValue.replace(/[^0-9.-]/g, ''));
+                            } else {
+                                metricValue = parseFloat(rawValue);
+                            }
+                        }
+                    }
+
+                    if (metricValue === null || isNaN(metricValue)) {
+                        fallbackLayers[layerName] = true;
+                    }
+                }
             }
 
             legendControl = L.control({ position: 'bottomright' });
@@ -597,10 +647,32 @@ class GeoJSONExporter:
                 div.innerHTML = '<h4>Change Map</h4>';
                 div.innerHTML += '<div class="legend-item"><i style="background:' + BASE_COLOR + '"></i> ' + differenceModeInfo.baseLayer + ' (base)</div>';
 
-                for (var i = 1; i < selectedLayers.length; i++) {
-                    var layerName = selectedLayers[i];
-                    var changeColor = getChangeColor(layerName, selectedLayers);
-                    div.innerHTML += '<div class="legend-item"><i style="background:' + changeColor + '"></i> ' + layerName + ' (changes)</div>';
+                if (range && range.max > 0 && colorMetric) {
+                    div.innerHTML += '<div class="legend-item" style="margin-top:4px; color:#666;"><strong>Changed areas by:</strong> ' + colorMetric + '</div>';
+                    var steps = 8;
+                    for (var step = steps - 1; step >= 0; step--) {
+                        var value = range.min + (range.max - range.min) * step / (steps - 1);
+                        var color = getColor(value, range.min, range.max, colorMetric);
+                        div.innerHTML +=
+                            '<div class="legend-item"><i style="background:' + color + '"></i> ' +
+                            value.toFixed(2) + '</div>';
+                    }
+
+                    var fallbackLayerNames = Object.keys(fallbackLayers).sort();
+                    if (fallbackLayerNames.length > 0) {
+                        div.innerHTML += '<div class="legend-item" style="margin-top:4px; color:#666;"><strong>No metric value fallback:</strong></div>';
+                    }
+                    for (var f = 0; f < fallbackLayerNames.length; f++) {
+                        var fallbackLayerName = fallbackLayerNames[f];
+                        var fallbackColor = getChangeColor(fallbackLayerName, selectedLayers);
+                        div.innerHTML += '<div class="legend-item"><i style="background:' + fallbackColor + '"></i> ' + fallbackLayerName + ' (changes)</div>';
+                    }
+                } else {
+                    for (var i = 1; i < selectedLayers.length; i++) {
+                        var layerName = selectedLayers[i];
+                        var changeColor = getChangeColor(layerName, selectedLayers);
+                        div.innerHTML += '<div class="legend-item"><i style="background:' + changeColor + '"></i> ' + layerName + ' (changes)</div>';
+                    }
                 }
 
                 div.innerHTML += '<div class="legend-item" style="margin-top:4px; color:#666;">Base layer: ' + differenceModeInfo.baseLayer + '</div>';
@@ -751,6 +823,14 @@ class GeoJSONExporter:
                 return 'Patch Area (km²)';
             }
             return select.value;
+        }
+
+        function isMetricColoringEnabled() {
+            var toggle = document.getElementById('color-enabled');
+            if (!toggle) {
+                return true;
+            }
+            return !!toggle.checked;
         }
 
         function setAllOptions(containerId, checked) {
@@ -1070,21 +1150,32 @@ class GeoJSONExporter:
             // Use the selected metric for coloring, or default to Patch Area
             var colorMetric = getColorMetric();
             var range = getMetricValueRange(selectedLayers, colorMetric);
+            var metricColoringEnabled = isMetricColoringEnabled();
             
             if (differenceModeInfo) {
-                createDifferenceLegend(differenceModeInfo, selectedLayers);
+                createDifferenceLegend(
+                    differenceModeInfo,
+                    selectedLayers,
+                    metricColoringEnabled ? colorMetric : null,
+                    metricColoringEnabled ? range : null
+                );
             } else if (singleLayerMode) {
                 if (legendControl) {
                     map.removeControl(legendControl);
                     legendControl = null;
                 }
-            } else if (range.max > 0) {
+            } else if (metricColoringEnabled && range.max > 0) {
                 createLegend(colorMetric, range.min, range.max);
             } else {
                 if (legendControl) {
                     map.removeControl(legendControl);
                     legendControl = null;
                 }
+            }
+
+            if (!metricColoringEnabled && legendControl) {
+                map.removeControl(legendControl);
+                legendControl = null;
             }
             
             geojsonLayer = L.geoJSON(filtered, {
@@ -1093,6 +1184,15 @@ class GeoJSONExporter:
                     var layerName = props.layer_name || '';
                     var metrics = normalizeMetrics(props);
                     var fillColor = BASE_COLOR;
+
+                    if (!metricColoringEnabled) {
+                        return {
+                            stroke: false,
+                            fill: false,
+                            opacity: 0,
+                            fillOpacity: 0
+                        };
+                    }
 
                     // One selected layer: keep uniform base color.
                     if (singleLayerMode) {
@@ -1114,23 +1214,27 @@ class GeoJSONExporter:
                             var changed = isChangedFeature(props, differenceModeInfo, baseLayerIndex);
                             
                             if (changed) {
-                                // Color changed areas by metric
-                                var metricValue = null;
-                                if (Object.prototype.hasOwnProperty.call(metrics, colorMetric)) {
-                                    var rawValue = metrics[colorMetric];
-                                    if (typeof rawValue === 'string') {
-                                        metricValue = parseFloat(rawValue.replace(/[^0-9.-]/g, ''));
-                                    } else {
-                                        metricValue = parseFloat(rawValue);
+                                if (metricColoringEnabled) {
+                                    // Color changed areas by metric
+                                    var metricValue = null;
+                                    if (Object.prototype.hasOwnProperty.call(metrics, colorMetric)) {
+                                        var rawValue = metrics[colorMetric];
+                                        if (typeof rawValue === 'string') {
+                                            metricValue = parseFloat(rawValue.replace(/[^0-9.-]/g, ''));
+                                        } else {
+                                            metricValue = parseFloat(rawValue);
+                                        }
+                                    } else if (props.patch_area && colorMetric === 'Patch Area (km²)') {
+                                        metricValue = props.patch_area;
                                     }
-                                } else if (props.patch_area && colorMetric === 'Patch Area (km²)') {
-                                    metricValue = props.patch_area;
-                                }
-                                
-                                if (metricValue !== null && !isNaN(metricValue) && range.max > 0) {
-                                    fillColor = getColor(metricValue, range.min, range.max, colorMetric);
-                                } else if (metricValue !== null && !isNaN(metricValue)) {
-                                    fillColor = getChangeColor(layerName, selectedLayers);
+
+                                    if (metricValue !== null && !isNaN(metricValue) && range.max > 0) {
+                                        fillColor = getColor(metricValue, range.min, range.max, colorMetric);
+                                    } else if (metricValue !== null && !isNaN(metricValue)) {
+                                        fillColor = getChangeColor(layerName, selectedLayers);
+                                    } else {
+                                        fillColor = getChangeColor(layerName, selectedLayers);
+                                    }
                                 } else {
                                     fillColor = getChangeColor(layerName, selectedLayers);
                                 }
@@ -1160,7 +1264,7 @@ class GeoJSONExporter:
                         value = props.patch_area;
                     }
                     
-                    if (value !== null && !isNaN(value) && range.max > 0) {
+                    if (metricColoringEnabled && value !== null && !isNaN(value) && range.max > 0) {
                         fillColor = getColor(value, range.min, range.max, colorMetric);
                     }
                     
@@ -1404,6 +1508,7 @@ class GeoJSONExporter:
             setAllOptions('metric-list', false);
         });
         document.getElementById('color-metric-select').addEventListener('change', updateMap);
+        document.getElementById('color-enabled').addEventListener('change', updateMap);
         updateMap();
         L.control.scale().addTo(map);
     </script>
