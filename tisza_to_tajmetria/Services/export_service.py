@@ -36,13 +36,14 @@ class ExportService:
         return export_paths
 
     @staticmethod
-    def export_map_bundle(selected_layers, metric_data, base_output_path, open_in_browser=True):
+    def export_map_bundle(selected_layers, metric_data, calculation_data, base_output_path, open_in_browser=True):
         export_paths = []
         output_dir = os.path.dirname(base_output_path) or "."
 
         geojson_path, html_url = GeoJSONExporter.export_and_generate_map(
             selected_layers,
             metric_data,
+            calculation_data,
             output_dir,
         )
 

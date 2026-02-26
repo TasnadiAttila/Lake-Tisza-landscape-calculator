@@ -260,6 +260,7 @@ class PluginController:
                     ExportService.export_map_bundle(
                         selected_layers,
                         self.model.last_metric_data,
+                        self.model.last_calculation_data,
                         base_output_path,
                         open_in_browser=True,
                     )

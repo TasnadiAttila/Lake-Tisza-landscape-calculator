@@ -46,6 +46,69 @@ class GeoJSONExporter:
     _server_port = 8000
 
     @staticmethod
+    def _normalize_layer_key(layer_name):
+        if layer_name is None:
+            return None
+        return str(layer_name).strip().casefold()
+
+    @staticmethod
+    def _normalize_class_key(class_value):
+        if class_value is None:
+            return None
+        try:
+            numeric = float(class_value)
+            if abs(numeric - round(numeric)) < 1e-6:
+                return str(int(numeric))
+            return f"{numeric:.6f}".rstrip('0').rstrip('.')
+        except (ValueError, TypeError):
+            return str(class_value)
+
+    @staticmethod
+    def _build_class_metric_lookup(calculation_data):
+        class_metric_lookup = {}
+        layer_metric_fallback = {}
+        class_name_lookup = {}
+        global_class_name_lookup = {}
+
+        if not calculation_data:
+            return class_metric_lookup, layer_metric_fallback, class_name_lookup, global_class_name_lookup
+
+        for row in calculation_data:
+            if not isinstance(row, (list, tuple)) or len(row) < 7:
+                continue
+
+            layer_name, metric_name, _detail, value, _unit, class_id, class_name = row
+            if layer_name is None or metric_name is None:
+                continue
+            layer_key = GeoJSONExporter._normalize_layer_key(layer_name)
+
+            if class_id is not None:
+                class_key = GeoJSONExporter._normalize_class_key(class_id)
+                if class_key is not None and class_name:
+                    class_name_lookup.setdefault(layer_key, {})[class_key] = str(class_name)
+                    global_class_name_lookup.setdefault(class_key, str(class_name))
+
+            numeric_value = value
+            if isinstance(numeric_value, str):
+                try:
+                    numeric_value = float(numeric_value)
+                except ValueError:
+                    continue
+
+            if not isinstance(numeric_value, (int, float)):
+                continue
+
+            if class_id is not None:
+                class_key = GeoJSONExporter._normalize_class_key(class_id)
+                if class_key is None:
+                    continue
+                class_metric_lookup.setdefault(layer_key, {}).setdefault(metric_name, {})[class_key] = numeric_value
+            else:
+                layer_metric_fallback.setdefault(layer_key, {})[metric_name] = numeric_value
+
+        return class_metric_lookup, layer_metric_fallback, class_name_lookup, global_class_name_lookup
+
+    @staticmethod
     def start_local_server(directory):
         """Start a local HTTP server in a background thread to serve map files"""
         try:
@@ -1008,7 +1071,7 @@ class GeoJSONExporter:
             }
 
             var rows = [];
-            var headerCells = '<th>Layer</th><th>Patch #</th>';
+            var headerCells = '<th>Layer</th><th>Patch #</th><th>Class ID</th><th>Class Name</th>';
             for (var h = 0; h < metricsToShow.length; h++) {
                 headerCells += '<th>' + metricsToShow[h] + '</th>';
             }
@@ -1044,6 +1107,16 @@ class GeoJSONExporter:
                     
                     var rowCells = '<td>' + layerName + '</td>';
                     rowCells += '<td>' + (p + 1) + '</td>';
+                    var classId = '-';
+                    if (props.class_value !== null && props.class_value !== undefined && props.class_value !== '') {
+                        classId = props.class_value;
+                        if (!isNaN(classId)) {
+                            classId = Number(classId);
+                        }
+                    }
+                    var className = props.class_name ? props.class_name : '-';
+                    rowCells += '<td>' + classId + '</td>';
+                    rowCells += '<td>' + className + '</td>';
                     
                     for (var k = 0; k < metricsToShow.length; k++) {
                         var metricName = metricsToShow[k];
@@ -1637,7 +1710,7 @@ class GeoJSONExporter:
             return []
 
     @staticmethod
-    def export_and_generate_map(layers, metric_data, output_dir):
+    def export_and_generate_map(layers, metric_data, calculation_data, output_dir):
         """
         Export layers with metric data to GeoJSON and generate web map
         
@@ -1664,6 +1737,7 @@ class GeoJSONExporter:
             # Combine all layers and metrics into one GeoJSON
             features = []
             crs_info = "EPSG:4326"
+            class_metric_lookup, layer_metric_fallback, class_name_lookup, global_class_name_lookup = GeoJSONExporter._build_class_metric_lookup(calculation_data)
             
             for layer in layers:
                 print(f"[export_and_generate_map] Processing layer: {layer.name()}")
@@ -1674,6 +1748,7 @@ class GeoJSONExporter:
                 
                 # Get metric info for this layer
                 layer_metrics = metric_data.get(layer.name(), {})
+                layer_key = GeoJSONExporter._normalize_layer_key(layer.name())
                 
                 # Vectorize raster to get patch geometries
                 patches = GeoJSONExporter.vectorize_raster_patches(layer)
@@ -1685,9 +1760,32 @@ class GeoJSONExporter:
                         patch_metrics = {
                             "Patch Area (km²)": round(patch['area'], 4)
                         }
+                        class_key = GeoJSONExporter._normalize_class_key(patch.get('class_value'))
+                        patch_class_name = class_name_lookup.get(layer_key, {}).get(class_key)
+                        if patch_class_name is None and class_key is not None:
+                            patch_class_name = global_class_name_lookup.get(class_key)
+
                         # Add layer-level metrics for reference
                         for metric_name, metric_value in layer_metrics.items():
-                            patch_metrics[f"{metric_name}"] = metric_value
+                            class_specific_value = (
+                                class_metric_lookup
+                                .get(layer_key, {})
+                                .get(metric_name, {})
+                                .get(class_key)
+                            )
+                            if class_specific_value is not None:
+                                patch_metrics[f"{metric_name}"] = class_specific_value
+                                continue
+
+                            fallback_value = (
+                                layer_metric_fallback
+                                .get(layer_key, {})
+                                .get(metric_name)
+                            )
+                            if fallback_value is not None:
+                                patch_metrics[f"{metric_name}"] = fallback_value
+                            else:
+                                patch_metrics[f"{metric_name}"] = metric_value
                         
                         metric_desc = ", ".join([f"{k}: {v}" for k, v in patch_metrics.items()])
                         
@@ -1698,6 +1796,7 @@ class GeoJSONExporter:
                                 "layer_name": layer.name(),
                                 "patch_area": patch['area'],
                                 "class_value": patch['class_value'],
+                                "class_name": patch_class_name,
                                 "geometry_key": json.dumps(patch['geometry'], sort_keys=True, separators=(",", ":")),
                                 "metrics": metric_desc,
                                 "metrics_map": patch_metrics,
@@ -1726,6 +1825,7 @@ class GeoJSONExporter:
                         },
                         "properties": {
                             "layer_name": layer.name(),
+                            "class_name": None,
                             "geometry_key": json.dumps({
                                 "type": "Polygon",
                                 "coordinates": [[
