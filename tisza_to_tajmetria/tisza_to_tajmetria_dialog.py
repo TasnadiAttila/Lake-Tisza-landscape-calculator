@@ -26,6 +26,7 @@ import os
 
 from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
+from qgis.PyQt.QtCore import QSize, Qt
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -42,3 +43,19 @@ class TiszaToTajmetriaDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
+        self._lock_selector_sizes()
+
+    def _lock_selector_sizes(self):
+        fixed_size = QSize(151, 40)
+        self.splitter_2.setMinimumSize(fixed_size)
+        self.splitter_2.setMaximumSize(fixed_size)
+        self.splitter_2.setChildrenCollapsible(False)
+        self.splitter_2.setHandleWidth(0)
+        handle = self.splitter_2.handle(1)
+        if handle is not None:
+            handle.setEnabled(False)
+            handle.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+
+        for selector in (self.layerSelector, self.metricSelector):
+            selector.setMinimumWidth(151)
+            selector.setMaximumWidth(151)
