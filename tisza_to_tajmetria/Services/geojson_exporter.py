@@ -202,6 +202,8 @@ class GeoJSONExporter:
         /* Sidebar for filters and charts */
         #sidebar {
             width: 400px;
+            min-width: 400px;
+            flex: 0 0 400px;
             background: #ffffff;
             border-right: 2px solid #ddd;
             display: flex;
@@ -325,6 +327,7 @@ class GeoJSONExporter:
         /* Map container */
         #map-container {
             flex: 1;
+            min-width: 0;
             display: flex;
             flex-direction: column;
             position: relative;
@@ -360,9 +363,17 @@ class GeoJSONExporter:
             font-size: 14px;
             text-transform: uppercase;
         }
+
+        .details .table-scroll {
+            width: 100%;
+            max-width: 100%;
+            overflow-x: auto;
+            overflow-y: visible;
+        }
         
         .details table {
-            width: 100%;
+            width: auto;
+            min-width: 100%;
             border-collapse: collapse;
             font-size: 11px;
         }
@@ -372,6 +383,7 @@ class GeoJSONExporter:
             border: 1px solid #ddd;
             padding: 6px 8px;
             text-align: left;
+            white-space: nowrap;
         }
         
         .details th {
@@ -1144,8 +1156,8 @@ class GeoJSONExporter:
             var summary = '<div style="margin-top:10px; padding-top:10px; border-top:1px solid #e0e0e0; font-size:12px; color:#666;">Total: ' + rows.length + ' patch(es)</div>';
             
             panel.innerHTML = '<div class="details"><div class="label">Patch Details</div>' +
-                '<table><thead><tr>' + headerCells + '</tr></thead>' +
-                '<tbody>' + rows.join('') + '</tbody></table>' + summary + '</div>';
+                '<div class="table-scroll"><table><thead><tr>' + headerCells + '</tr></thead>' +
+                '<tbody>' + rows.join('') + '</tbody></table></div>' + summary + '</div>';
             panel.classList.add('has-results');
         }
 
