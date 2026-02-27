@@ -1,8 +1,19 @@
 ﻿from qgis.core import QgsProject
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QObject, QEvent
 from PyQt5.QtGui import QStandardItemModel, QStandardItem
 
 from tisza_to_tajmetria.Metrics.metric_collector import Metrics
+
+
+class _NoScrollWheelFilter(QObject):
+    def __init__(self, combobox):
+        super().__init__(combobox)
+        self._combobox = combobox
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Wheel and not self._combobox.view().isVisible():
+            return True
+        return False
 
 
 class ComboBoxViewHelper:
@@ -14,6 +25,16 @@ class ComboBoxViewHelper:
     def make_combobox_editable(combobox):
         combobox.setEditable(True)
         combobox.lineEdit().setPlaceholderText("Search...")
+        ComboBoxViewHelper.disable_wheel_when_closed(combobox)
+
+    @staticmethod
+    def disable_wheel_when_closed(combobox):
+        wheel_filter = combobox.property("noScrollWheelFilter")
+        if wheel_filter is None:
+            wheel_filter = _NoScrollWheelFilter(combobox)
+            combobox.setProperty("noScrollWheelFilter", wheel_filter)
+            combobox.installEventFilter(wheel_filter)
+            combobox.lineEdit().installEventFilter(wheel_filter)
 
     @staticmethod
     def load_layers_to_combobox(combobox, layer_types=None):
