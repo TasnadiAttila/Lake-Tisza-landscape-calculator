@@ -44,6 +44,7 @@ class TiszaToTajmetriaDialog(QtWidgets.QDialog, FORM_CLASS):
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
         self._lock_selector_sizes()
+        self._lock_button_sizes()
 
     def _lock_selector_sizes(self):
         fixed_size = QSize(151, 40)
@@ -59,3 +60,16 @@ class TiszaToTajmetriaDialog(QtWidgets.QDialog, FORM_CLASS):
         for selector in (self.layerSelector, self.metricSelector):
             selector.setMinimumWidth(151)
             selector.setMaximumWidth(151)
+
+    def _lock_button_sizes(self):
+        for button in (self.calculateButton, self.exportButton, self.cancelButton):
+            size_hint = button.sizeHint()
+            button.setFixedSize(size_hint)
+
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.setHandleWidth(0)
+        for index in range(1, self.splitter.count()):
+            handle = self.splitter.handle(index)
+            if handle is not None:
+                handle.setEnabled(False)
+                handle.setAttribute(Qt.WA_TransparentForMouseEvents, True)
