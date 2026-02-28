@@ -6,6 +6,7 @@ from qgis.core import (
     QgsProcessingFeedback,
     QgsProcessingContext
 )
+from ..helper import check_interruption
 import processing
 import os
 
@@ -50,7 +51,9 @@ class GreatestPatchArea(IMetricsCalculator, ABC):
         nodata = provider.sourceNoDataValue(1)
 
         max_area = 0.0
-        for feature in polygon_layer.getFeatures():
+        for feature_index, feature in enumerate(polygon_layer.getFeatures()):
+            if feature_index % 256 == 0:
+                check_interruption(yield_thread=True)
             value = feature["VALUE"]
 
             if nodata is not None and value == nodata:

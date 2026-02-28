@@ -4,6 +4,7 @@ import logging
 import os
 
 from qgis.core import Qgis
+from qgis.PyQt.QtCore import QCoreApplication, QEventLoop
 
 from .background_task_worker import MetricCalculationWorker, ExcelExportWorker
 from ..Models.plugin_model import PluginModel
@@ -99,6 +100,7 @@ class PluginController:
 
         self.calculation_worker.progress.connect(self.on_progress_update)
         self.calculation_worker.finished_calculation.connect(self.on_calculation_finished)
+        self.calculation_worker.cancelled.connect(self.on_calculation_cancelled)
         self.calculation_worker.error.connect(self.on_calculation_error)
         self.calculation_worker.start()
 
@@ -119,12 +121,27 @@ class PluginController:
     def on_calculation_error(self, error_message):
         self.hide_progress()
         self.view.set_buttons_enabled(True, False)
+        self.update_export_button_state()
 
         self.iface.messageBar().pushMessage(
             "Error",
             error_message,
             level=Qgis.Critical,
             duration=10,
+        )
+
+        self._cleanup_calculation_worker()
+
+    def on_calculation_cancelled(self):
+        self.hide_progress()
+        self.view.set_buttons_enabled(True, False)
+        self.update_export_button_state()
+
+        self.iface.messageBar().pushMessage(
+            "Info",
+            "Calculation cancelled.",
+            level=Qgis.Info,
+            duration=4,
         )
 
         self._cleanup_calculation_worker()
@@ -158,11 +175,35 @@ class PluginController:
     def on_cancel_clicked(self):
         if self.calculation_worker and self.calculation_worker.isRunning():
             self.calculation_worker.cancel()
+            self.calculation_worker.requestInterruption()
             self.view.set_cancelling_state()
+            QCoreApplication.processEvents(QEventLoop.AllEvents, 50)
+            self._force_stop_calculation_if_needed()
 
         if self.export_worker and self.export_worker.isRunning():
             self.export_worker.cancel()
+            self.export_worker.requestInterruption()
             self.view.set_cancelling_state()
+            QCoreApplication.processEvents(QEventLoop.AllEvents, 50)
+            self._force_stop_export_if_needed()
+
+    def _force_stop_calculation_if_needed(self):
+        if not self.calculation_worker or not self.calculation_worker.isRunning():
+            return
+
+        LOGGER.warning("Force-terminating calculation worker after cancel request")
+        self.calculation_worker.terminate()
+        self.calculation_worker.wait(500)
+        self.on_calculation_cancelled()
+
+    def _force_stop_export_if_needed(self):
+        if not self.export_worker or not self.export_worker.isRunning():
+            return
+
+        LOGGER.warning("Force-terminating export worker after cancel request")
+        self.export_worker.terminate()
+        self.export_worker.wait(500)
+        self.on_export_cancelled()
 
     def update_export_button_state(self):
         selected_layers = ComboBoxViewHelper.get_checked_items(self.view.layer_selector)
@@ -219,10 +260,24 @@ class PluginController:
             self.export_worker.finished_export.connect(
                 lambda path: self.on_format_export_finished(path, export_csv, export_map, output_path, headers)
             )
+            self.export_worker.cancelled.connect(self.on_export_cancelled)
             self.export_worker.error.connect(self.on_export_error)
             self.export_worker.start()
         else:
             self.on_format_export_finished(None, export_csv, export_map, output_path, headers)
+
+    def on_export_cancelled(self):
+        self.hide_progress()
+        self.view.set_buttons_enabled(True, True)
+
+        self.iface.messageBar().pushMessage(
+            "Info",
+            "Export cancelled.",
+            level=Qgis.Info,
+            duration=4,
+        )
+
+        self._cleanup_export_worker()
 
     def on_format_export_finished(self, excel_path, export_csv, export_map, base_output_path, headers):
         export_paths = []

@@ -1,5 +1,5 @@
 ﻿from abc import ABC
-from ..helper import bfs
+from ..helper import bfs, check_interruption
 from qgis.core import QgsCoordinateReferenceSystem, QgsProject
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 import processing
@@ -49,6 +49,8 @@ class MedianPatchArea(IMetricsCalculator, ABC):
         }
 
         for row in range(height):
+            if row % 32 == 0:
+                check_interruption(yield_thread=True)
             for col in range(width):
                 if visited[row][col]:
                     continue

@@ -1,5 +1,6 @@
 ﻿from abc import ABC
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
+from ..helper import check_interruption
 
 class LandCover(IMetricsCalculator, ABC):
     """
@@ -21,6 +22,8 @@ class LandCover(IMetricsCalculator, ABC):
         class_counts = {}
 
         for row in range(height):
+            if row % 32 == 0:
+                check_interruption(yield_thread=True)
             for col in range(width):
                 val = block.value(row, col)
                 if val is None:

@@ -1,5 +1,6 @@
 from abc import ABC
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
+from ..helper import check_interruption
 import numpy as np
 from scipy import ndimage
 
@@ -22,6 +23,8 @@ class PatchDensity(IMetricsCalculator, ABC):
         raster_array = np.zeros((height, width), dtype=int)
 
         for row in range(height):
+            if row % 32 == 0:
+                check_interruption(yield_thread=True)
             for col in range(width):
                 val = block.value(row, col)
                 if val is None:
@@ -38,6 +41,7 @@ class PatchDensity(IMetricsCalculator, ABC):
         total_area_km2 = total_area_m2 / 1_000_000
 
         for val in np.unique(raster_array):
+            check_interruption(yield_thread=True)
             if val == 0:
                 continue  # ne számoljuk a háttér patch-et
 

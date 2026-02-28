@@ -1,5 +1,6 @@
 ﻿from abc import ABC
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
+from ..helper import check_interruption
 
 class EffectiveMeshSize(IMetricsCalculator, ABC):
     """Calculate effective mesh size in square kilometers"""
@@ -16,6 +17,8 @@ class EffectiveMeshSize(IMetricsCalculator, ABC):
         stats = {}
         block = provider.block(1, extent, layer.width(), layer.height())
         for row in range(layer.height()):
+            if row % 32 == 0:
+                check_interruption(yield_thread=True)
             for col in range(layer.width()):
                 val = block.value(row, col)
                 if val is not None:

@@ -1,7 +1,7 @@
 ﻿from abc import ABC
 from qgis.core import QgsCoordinateReferenceSystem
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
-from ..helper import bfs_collect
+from ..helper import bfs_collect, check_interruption
 import processing
 import math
 
@@ -58,6 +58,8 @@ class Euclidean(IMetricsCalculator, ABC):
         # Collect centroids for EACH contiguous patch across all classes
         patch_centroids = []
         for row in range(height):
+            if row % 32 == 0:
+                check_interruption(yield_thread=True)
             for col in range(width):
                 if visited[row][col]:
                     continue
@@ -75,6 +77,8 @@ class Euclidean(IMetricsCalculator, ABC):
         total_km = 0.0
         pairs = 0
         for i in range(n):
+            if i % 64 == 0:
+                check_interruption(yield_thread=True)
             x1, y1 = patch_centroids[i]
             for j in range(i + 1, n):
                 x2, y2 = patch_centroids[j]

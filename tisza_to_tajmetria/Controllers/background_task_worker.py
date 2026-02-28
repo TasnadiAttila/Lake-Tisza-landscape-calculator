@@ -25,6 +25,7 @@ class MetricCalculationWorker(QThread):
     
     progress = pyqtSignal(int, str)  # percentage, message
     finished_calculation = pyqtSignal(list, dict)  # data_to_write, metric_data
+    cancelled = pyqtSignal()
     error = pyqtSignal(str)  # error message
     
     def __init__(self, selected_layers, selected_metrics, land_cover_mapping_func, unit_mapping, parent=None):
@@ -126,8 +127,9 @@ class MetricCalculationWorker(QThread):
             current_task = 0
             
             for layer in self.selected_layers:
-                if self._is_cancelled:
+                if self._is_cancelled or self.isInterruptionRequested():
                     self.progress.emit(0, "Cancelled")
+                    self.cancelled.emit()
                     return
                     
                 layer_name = layer.name()
@@ -135,8 +137,9 @@ class MetricCalculationWorker(QThread):
                 layer_metrics = {}
                 
                 for metric_func, metric_name in self.selected_metrics:
-                    if self._is_cancelled:
+                    if self._is_cancelled or self.isInterruptionRequested():
                         self.progress.emit(0, "Cancelled")
+                        self.cancelled.emit()
                         return
                     
                     current_task += 1
@@ -147,6 +150,11 @@ class MetricCalculationWorker(QThread):
                     
                     try:
                         value = metric_func(layer)
+
+                        if self._is_cancelled or self.isInterruptionRequested():
+                            self.progress.emit(0, "Cancelled")
+                            self.cancelled.emit()
+                            return
 
                         validation_warnings = self._collect_range_warnings(metric_name, value)
                         for warning in validation_warnings:
@@ -343,6 +351,10 @@ class MetricCalculationWorker(QThread):
                                 None,
                             ])
                     
+                    except InterruptedError:
+                        self.progress.emit(0, "Cancelled")
+                        self.cancelled.emit()
+                        return
                     except Exception as e:
                         data_to_write.append([
                             layer_name,
@@ -360,6 +372,9 @@ class MetricCalculationWorker(QThread):
             self.progress.emit(100, "Calculation complete!")
             self.finished_calculation.emit(data_to_write, metric_data)
             
+        except InterruptedError:
+            self.progress.emit(0, "Cancelled")
+            self.cancelled.emit()
         except Exception as e:
             self.error.emit(f"Fatal error during calculation: {str(e)}")
 
@@ -376,6 +391,7 @@ class ExcelExportWorker(QThread):
     
     progress = pyqtSignal(int, str)
     finished_export = pyqtSignal(str)
+    cancelled = pyqtSignal()
     error = pyqtSignal(str)
     
     def __init__(self, data_to_write, headers, output_path, parent=None):
@@ -404,6 +420,8 @@ class ExcelExportWorker(QThread):
             self.progress.emit(10, "Creating Excel workbook...")
             
             if self._is_cancelled:
+                self.progress.emit(0, "Cancelled")
+                self.cancelled.emit()
                 return
             
             workbook = xlsxwriter.Workbook(self.output_path)
@@ -436,6 +454,8 @@ class ExcelExportWorker(QThread):
             
             if self._is_cancelled:
                 workbook.close()
+                self.progress.emit(0, "Cancelled")
+                self.cancelled.emit()
                 return
             
             # Write data rows with progress updates
@@ -443,6 +463,8 @@ class ExcelExportWorker(QThread):
             for idx, row_data in enumerate(self.data_to_write):
                 if self._is_cancelled:
                     workbook.close()
+                    self.progress.emit(0, "Cancelled")
+                    self.cancelled.emit()
                     return
                 
                 # Update progress every 10% of rows

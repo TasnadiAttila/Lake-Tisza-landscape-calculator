@@ -1,5 +1,5 @@
 ﻿from abc import ABC
-from ..helper import bfs_collect
+from ..helper import bfs_collect, check_interruption
 from qgis.core import QgsCoordinateReferenceSystem
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
 import processing
@@ -58,6 +58,8 @@ class NearestNeighbourDistance(IMetricsCalculator, ABC):
         class_centroids = {}
 
         for row in range(height):
+            if row % 32 == 0:
+                check_interruption(yield_thread=True)
             for col in range(width):
                 if visited[row][col]:
                     continue
@@ -70,9 +72,13 @@ class NearestNeighbourDistance(IMetricsCalculator, ABC):
                 class_centroids[value].append(centroid)
 
         nnd_result = {}
-        for cls, centroids in class_centroids.items():
+        for cls_index, (cls, centroids) in enumerate(class_centroids.items()):
+            if cls_index % 8 == 0:
+                check_interruption(yield_thread=True)
             distances_km = []
             for i, (x1, y1) in enumerate(centroids):
+                if i % 64 == 0:
+                    check_interruption(yield_thread=True)
                 min_dist_m = float("inf")
                 for j, (x2, y2) in enumerate(centroids):
                     if i == j:

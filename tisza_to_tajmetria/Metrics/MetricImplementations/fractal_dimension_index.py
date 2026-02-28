@@ -1,5 +1,6 @@
 ﻿from abc import ABC
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
+from ..helper import check_interruption
 import numpy as np
 import math
 
@@ -26,6 +27,8 @@ class FractalDimensionIndex(IMetricsCalculator, ABC):
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 
         for row in range(height):
+            if row % 16 == 0:
+                check_interruption(yield_thread=True)
             for col in range(width):
                 val = block.value(row, col)
                 if val is None or np.isnan(val):

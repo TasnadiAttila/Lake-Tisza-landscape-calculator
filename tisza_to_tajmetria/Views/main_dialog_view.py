@@ -13,7 +13,7 @@ class MainDialogView:
     def bind_actions(self, on_calculate, on_export, on_cancel):
         self.dialog.calculateButton.clicked.connect(on_calculate)
         self.dialog.exportButton.clicked.connect(on_export)
-        self.dialog.cancelButton.clicked.connect(on_cancel)
+        self.dialog.cancelButton.pressed.connect(on_cancel)
 
     def configure_save_dialog(self):
         self.dialog.saveFileDialog.setFilter("Excel files (*.xlsx);")
@@ -33,6 +33,9 @@ class MainDialogView:
         self.dialog.progressLabel.setVisible(True)
         self.dialog.cancelButton.setVisible(True)
         self.dialog.cancelButton.setEnabled(True)
+        self.dialog.progressBar.raise_()
+        self.dialog.progressLabel.raise_()
+        self.dialog.cancelButton.raise_()
 
     def hide_progress(self):
         self.dialog.progressBar.setVisible(False)
