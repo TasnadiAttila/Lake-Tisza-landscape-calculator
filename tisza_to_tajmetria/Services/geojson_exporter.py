@@ -188,6 +188,7 @@ class GeoJSONExporter:
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1/dist/chartjs-plugin-zoom.min.js"></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -199,7 +200,7 @@ class GeoJSONExporter:
             overflow: hidden;
         }
         
-        /* Sidebar for filters and charts */
+        /* Left sidebar for filters */
         #sidebar {
             width: 400px;
             min-width: 400px;
@@ -209,6 +210,85 @@ class GeoJSONExporter:
             display: flex;
             flex-direction: column;
             overflow: hidden;
+        }
+
+        /* Right pane for statistics */
+        #stats-pane {
+            width: 420px;
+            min-width: 420px;
+            flex: 0 0 420px;
+            background: #ffffff;
+            border-left: 2px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #stats-pane.collapsed {
+            width: 44px;
+            min-width: 44px;
+            flex: 0 0 44px;
+        }
+
+        #stats-header {
+            background: linear-gradient(135deg, #08519c 0%, #3182bd 100%);
+            color: white;
+            padding: 15px 20px;
+            font-size: 18px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        #stats-pane.collapsed #stats-header {
+            padding: 10px 6px;
+            justify-content: center;
+        }
+
+        #stats-title {
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #stats-pane.collapsed #stats-title {
+            display: none;
+        }
+
+        #stats-toggle {
+            border: 1px solid rgba(255,255,255,0.75);
+            background: rgba(255,255,255,0.12);
+            color: #ffffff;
+            font-size: 12px;
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            line-height: 1;
+            font-weight: bold;
+            padding: 0;
+        }
+
+        #stats-toggle:hover {
+            background: rgba(255,255,255,0.22);
+        }
+
+        #stats-pane.collapsed #stats-toggle {
+            width: 28px;
+            height: 28px;
+        }
+
+        #stats-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        #stats-pane.collapsed #stats-content {
+            display: none;
         }
         
         #sidebar-header {
@@ -508,21 +588,6 @@ class GeoJSONExporter:
             <div class="filter-section">
                 <div class="summary" id="panel-summary"></div>
             </div>
-            
-            <div class="filter-section" id="charts-section" style="border-top: 2px solid #08519c;">
-                <h2>Statistics</h2>
-                <div style="margin: 10px 0;">
-                    <canvas id="metricsChart" height="200"></canvas>
-                </div>
-                <div style="margin: 10px 0;">
-                    <canvas id="layerComparisonChart" height="180"></canvas>
-                </div>
-            </div>
-            
-            <div class="filter-section" id="layer-summary-section" style="display:none; border-top: 2px solid #08519c;">
-                <h2>Selected Layer Metrics</h2>
-                <div id="layer-summary-content" style="font-size: 12px;"></div>
-            </div>
         </div>
     </div>
     
@@ -533,6 +598,33 @@ class GeoJSONExporter:
             <div class="details">
                 <div class="label">Patch Details</div>
                 <div class="empty">Select layers to see individual patches.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right statistics pane -->
+    <div id="stats-pane">
+        <div id="stats-header">
+            <span id="stats-title">Statistics</span>
+            <button type="button" id="stats-toggle" aria-label="Collapse statistics pane" title="Collapse statistics pane">❯</button>
+        </div>
+        <div id="stats-content">
+            <div class="filter-section" id="charts-section" style="border-top: 2px solid #08519c;">
+                <h2>Diagrams</h2>
+                <div style="margin: 10px 0; height: 260px;">
+                    <canvas id="metricsChart"></canvas>
+                </div>
+                <div style="margin: 8px 0 0 0; font-size: 12px; color: #333;">
+                    <label style="display:flex; align-items:center; gap:6px; margin-top:8px; cursor:pointer;">
+                        <input type="checkbox" id="log-scale-enabled" />
+                        Use logarithmic Y scale (helps reveal small values)
+                    </label>
+                </div>
+            </div>
+
+            <div class="filter-section" id="layer-summary-section" style="display:none; border-top: 2px solid #08519c;">
+                <h2>Selected Layer Metrics</h2>
+                <div id="layer-summary-content" style="font-size: 12px;"></div>
             </div>
         </div>
     </div>
@@ -549,6 +641,54 @@ class GeoJSONExporter:
         var geojsonLayer = null;
         var legendControl = null;
         var colorMetricOptions = [];
+        var isStatsPaneCollapsed = false;
+
+        function setStatsPaneCollapsed(collapsed) {
+            var statsPane = document.getElementById('stats-pane');
+            var statsToggle = document.getElementById('stats-toggle');
+            if (!statsPane || !statsToggle) {
+                return;
+            }
+
+            isStatsPaneCollapsed = !!collapsed;
+            statsPane.classList.toggle('collapsed', isStatsPaneCollapsed);
+            statsToggle.textContent = isStatsPaneCollapsed ? '❮' : '❯';
+            statsToggle.setAttribute('aria-label', isStatsPaneCollapsed ? 'Expand statistics pane' : 'Collapse statistics pane');
+            statsToggle.setAttribute('title', isStatsPaneCollapsed ? 'Expand statistics pane' : 'Collapse statistics pane');
+            map.invalidateSize();
+        }
+
+        function toggleStatsPane() {
+            setStatsPaneCollapsed(!isStatsPaneCollapsed);
+        }
+
+        function collectNumericDatasetValues(datasets) {
+            var values = [];
+            for (var i = 0; i < datasets.length; i++) {
+                var data = datasets[i].data || [];
+                for (var j = 0; j < data.length; j++) {
+                    var value = data[j];
+                    if (value !== null && value !== undefined && !isNaN(value)) {
+                        values.push(Number(value));
+                    }
+                }
+            }
+            return values;
+        }
+
+        function formatAxisValue(value) {
+            if (value === null || value === undefined || isNaN(value)) {
+                return '';
+            }
+            var absValue = Math.abs(value);
+            if ((absValue > 0 && absValue < 0.001) || absValue >= 1000000) {
+                return Number(value).toExponential(2);
+            }
+            if (absValue >= 1000) {
+                return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+            }
+            return Number(value).toLocaleString(undefined, { maximumFractionDigits: 6 });
+        }
 
         function getPalette(metricName) {
             var palettes = {
@@ -1390,149 +1530,185 @@ class GeoJSONExporter:
         }
         
         var metricsChartInstance = null;
-        var layerChartInstance = null;
+        function parseNumericMetricValue(rawValue) {
+            if (rawValue === null || rawValue === undefined) {
+                return null;
+            }
+            if (typeof rawValue === 'number') {
+                return isNaN(rawValue) ? null : rawValue;
+            }
+            if (typeof rawValue === 'string') {
+                var normalized = rawValue.trim();
+                if (!normalized) {
+                    return null;
+                }
+
+                normalized = normalized.replace(/\s+/g, '');
+
+                if (normalized.indexOf(',') !== -1 && normalized.indexOf('.') !== -1) {
+                    if (normalized.lastIndexOf(',') > normalized.lastIndexOf('.')) {
+                        normalized = normalized.replace(/\./g, '');
+                        normalized = normalized.replace(',', '.');
+                    } else {
+                        normalized = normalized.replace(/,/g, '');
+                    }
+                } else if (normalized.indexOf(',') !== -1) {
+                    normalized = normalized.replace(',', '.');
+                }
+
+                normalized = normalized.replace(/[^0-9eE+\-.]/g, '');
+                var parsed = Number(normalized);
+                return isNaN(parsed) ? null : parsed;
+            }
+            var fallback = parseFloat(rawValue);
+            return isNaN(fallback) ? null : fallback;
+        }
+
+        function getSeriesColor(index, alpha) {
+            var colors = [
+                [49, 130, 189],
+                [255, 99, 132],
+                [75, 192, 192],
+                [255, 206, 86],
+                [153, 102, 255],
+                [255, 159, 64],
+                [54, 162, 235],
+                [199, 199, 199]
+            ];
+            var rgb = colors[index % colors.length];
+            return 'rgba(' + rgb[0] + ', ' + rgb[1] + ', ' + rgb[2] + ', ' + alpha + ')';
+        }
         
         function updateCharts(selectedLayers, selectedMetrics) {
             if (!selectedLayers.length || !selectedMetrics.length) {
                 // Hide charts if no selection
                 if (metricsChartInstance) metricsChartInstance.destroy();
-                if (layerChartInstance) layerChartInstance.destroy();
                 return;
             }
             
-            // Collect metric values by layer
+            // Collect metric values by layer (across all patches/features)
             var layerMetricsData = {};
-            
+
             for (var i = 0; i < selectedLayers.length; i++) {
-                var layerName = selectedLayers[i];
-                layerMetricsData[layerName] = {};
-                
-                // Find first feature for this layer to get metrics
-                for (var j = 0; j < geojsonFeature.features.length; j++) {
-                    var feature = geojsonFeature.features[j];
-                    var props = feature.properties || {};
-                    if (props.layer_name === layerName) {
-                        var metrics = normalizeMetrics(props);
-                        
-                        for (var k = 0; k < selectedMetrics.length; k++) {
-                            var metricName = selectedMetrics[k];
-                            if (Object.prototype.hasOwnProperty.call(metrics, metricName)) {
-                                var value = parseFloat(metrics[metricName]);
-                                if (!isNaN(value)) {
-                                    layerMetricsData[layerName][metricName] = value;
-                                }
-                            }
+                layerMetricsData[selectedLayers[i]] = {};
+            }
+
+            for (var j = 0; j < geojsonFeature.features.length; j++) {
+                var feature = geojsonFeature.features[j];
+                var props = feature.properties || {};
+                var layerName = props.layer_name;
+                if (selectedLayers.indexOf(layerName) === -1) {
+                    continue;
+                }
+
+                var metrics = normalizeMetrics(props);
+                for (var k = 0; k < selectedMetrics.length; k++) {
+                    var metricName = selectedMetrics[k];
+                    if (!Object.prototype.hasOwnProperty.call(metrics, metricName)) {
+                        continue;
+                    }
+
+                    var numericValue = parseNumericMetricValue(metrics[metricName]);
+                    if (numericValue === null) {
+                        continue;
+                    }
+
+                    if (!Object.prototype.hasOwnProperty.call(layerMetricsData[layerName], metricName)) {
+                        layerMetricsData[layerName][metricName] = { sum: 0, count: 0 };
+                    }
+
+                    layerMetricsData[layerName][metricName].sum += numericValue;
+                    layerMetricsData[layerName][metricName].count += 1;
+                }
+            }
+
+            var layerMetricAverages = {};
+            for (var lm = 0; lm < selectedLayers.length; lm++) {
+                var selectedLayerName = selectedLayers[lm];
+                layerMetricAverages[selectedLayerName] = {};
+                var metricBuckets = layerMetricsData[selectedLayerName] || {};
+                for (var metricKey in metricBuckets) {
+                    if (Object.prototype.hasOwnProperty.call(metricBuckets, metricKey)) {
+                        var bucket = metricBuckets[metricKey];
+                        if (bucket.count > 0) {
+                            layerMetricAverages[selectedLayerName][metricKey] = bucket.sum / bucket.count;
                         }
-                        break;
                     }
                 }
             }
             
-            // Chart 1: Metrics comparison for first selected layer
+            // Chart 1: Metrics comparison for every selected layer (year)
             var ctx1 = document.getElementById('metricsChart');
             if (ctx1) {
                 if (metricsChartInstance) {
                     metricsChartInstance.destroy();
                 }
-                
-                var firstLayer = selectedLayers[0];
-                var metricLabels = [];
-                var metricValues = [];
-                
-                for (var m = 0; m < selectedMetrics.length; m++) {
-                    var metric = selectedMetrics[m];
-                    if (layerMetricsData[firstLayer] && layerMetricsData[firstLayer][metric] !== undefined) {
-                        metricLabels.push(metric);
-                        metricValues.push(layerMetricsData[firstLayer][metric]);
+
+                var metricLabels = selectedMetrics.slice();
+
+                var metricDatasets = [];
+                for (var layerIndex = 0; layerIndex < selectedLayers.length; layerIndex++) {
+                    var layerLabel = selectedLayers[layerIndex];
+                    var layerSeries = [];
+                    var hasSeriesData = false;
+
+                    for (var labelIndex = 0; labelIndex < metricLabels.length; labelIndex++) {
+                        var metricLabel = metricLabels[labelIndex];
+                        var metricValue = null;
+                        if (Object.prototype.hasOwnProperty.call(layerMetricAverages[layerLabel] || {}, metricLabel)) {
+                            metricValue = layerMetricAverages[layerLabel][metricLabel];
+                            hasSeriesData = true;
+                        }
+                        layerSeries.push(metricValue);
+                    }
+
+                    if (hasSeriesData) {
+                        metricDatasets.push({
+                            label: layerLabel,
+                            data: layerSeries,
+                            backgroundColor: getSeriesColor(layerIndex, 0.65),
+                            borderColor: getSeriesColor(layerIndex, 1),
+                            borderWidth: 1
+                        });
                     }
                 }
-                
-                metricsChartInstance = new Chart(ctx1, {
-                    type: 'bar',
-                    data: {
-                        labels: metricLabels,
-                        datasets: [{
-                            label: firstLayer,
-                            data: metricValues,
-                            backgroundColor: 'rgba(49, 130, 189, 0.7)',
-                            borderColor: 'rgba(8, 81, 156, 1)',
-                            borderWidth: 1
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            },
-                            title: {
-                                display: true,
-                                text: 'Metrics: ' + firstLayer,
-                                font: { size: 13, weight: 'bold' }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: { font: { size: 10 } }
-                            },
-                            x: {
-                                ticks: { 
-                                    font: { size: 9 },
-                                    autoSkip: false,
-                                    maxRotation: 45,
-                                    minRotation: 45
-                                }
-                            }
+
+                if (metricLabels.length && metricDatasets.length) {
+                    var chartValues = collectNumericDatasetValues(metricDatasets);
+                    var minValue = chartValues.length ? Math.min.apply(null, chartValues) : null;
+                    var maxValue = chartValues.length ? Math.max.apply(null, chartValues) : null;
+                    var canUseLogScale = chartValues.length > 0 && minValue > 0;
+
+                    var logScaleCheckbox = document.getElementById('log-scale-enabled');
+                    var useLogScale = false;
+                    if (logScaleCheckbox) {
+                        logScaleCheckbox.disabled = !canUseLogScale;
+                        if (!canUseLogScale) {
+                            logScaleCheckbox.checked = false;
+                        }
+                        useLogScale = canUseLogScale && !!logScaleCheckbox.checked;
+                    }
+
+                    var xMin = undefined;
+                    var xMax = undefined;
+                    if (!useLogScale && chartValues.length) {
+                        var spread = maxValue - minValue;
+                        if (spread === 0) {
+                            spread = Math.abs(maxValue || 1) * 0.1;
+                        }
+                        var padding = spread * 0.1;
+                        xMin = minValue - padding;
+                        xMax = maxValue + padding;
+                        if (minValue >= 0 && xMin < 0) {
+                            xMin = 0;
                         }
                     }
-                });
-            }
-            
-            // Chart 2: Layer comparison for first selected metric
-            if (selectedLayers.length > 1 && selectedMetrics.length > 0) {
-                var ctx2 = document.getElementById('layerComparisonChart');
-                if (ctx2) {
-                    if (layerChartInstance) {
-                        layerChartInstance.destroy();
-                    }
-                    
-                    var firstMetric = selectedMetrics[0];
-                    var layerLabels = [];
-                    var layerValues = [];
-                    
-                    for (var l = 0; l < selectedLayers.length; l++) {
-                        var layer = selectedLayers[l];
-                        if (layerMetricsData[layer] && layerMetricsData[layer][firstMetric] !== undefined) {
-                            layerLabels.push(layer);
-                            layerValues.push(layerMetricsData[layer][firstMetric]);
-                        }
-                    }
-                    
-                    layerChartInstance = new Chart(ctx2, {
-                        type: 'horizontalBar' in Chart.defaults ? 'horizontalBar' : 'bar',
+
+                    metricsChartInstance = new Chart(ctx1, {
+                        type: 'bar',
                         data: {
-                            labels: layerLabels,
-                            datasets: [{
-                                label: firstMetric,
-                                data: layerValues,
-                                backgroundColor: [
-                                    'rgba(255, 99, 132, 0.7)',
-                                    'rgba(54, 162, 235, 0.7)',
-                                    'rgba(255, 206, 86, 0.7)',
-                                    'rgba(75, 192, 192, 0.7)',
-                                    'rgba(153, 102, 255, 0.7)'
-                                ],
-                                borderColor: [
-                                    'rgba(255, 99, 132, 1)',
-                                    'rgba(54, 162, 235, 1)',
-                                    'rgba(255, 206, 86, 1)',
-                                    'rgba(75, 192, 192, 1)',
-                                    'rgba(153, 102, 255, 1)'
-                                ],
-                                borderWidth: 1
-                            }]
+                            labels: metricLabels,
+                            datasets: metricDatasets
                         },
                         options: {
                             indexAxis: 'y',
@@ -1540,21 +1716,50 @@ class GeoJSONExporter:
                             maintainAspectRatio: false,
                             plugins: {
                                 legend: {
-                                    display: false
+                                    display: true,
+                                    position: 'top'
                                 },
                                 title: {
                                     display: true,
-                                    text: 'Layer Comparison: ' + firstMetric,
+                                    text: 'Metrics by Selected Years',
                                     font: { size: 13, weight: 'bold' }
+                                },
+                                zoom: {
+                                    pan: {
+                                        enabled: false
+                                    },
+                                    zoom: {
+                                        wheel: {
+                                            enabled: true,
+                                            speed: 0.10
+                                        },
+                                        pinch: {
+                                            enabled: true
+                                        },
+                                        mode: 'x'
+                                    }
                                 }
                             },
                             scales: {
                                 x: {
-                                    beginAtZero: true,
-                                    ticks: { font: { size: 10 } }
+                                    type: useLogScale ? 'logarithmic' : 'linear',
+                                    beginAtZero: false,
+                                    min: xMin,
+                                    max: xMax,
+                                    ticks: {
+                                        font: { size: 10 },
+                                        callback: function(value) {
+                                            return formatAxisValue(value);
+                                        }
+                                    }
                                 },
                                 y: {
-                                    ticks: { font: { size: 10 } }
+                                    ticks: {
+                                        font: { size: 9 },
+                                        autoSkip: false,
+                                        maxRotation: 0,
+                                        minRotation: 0
+                                    }
                                 }
                             }
                         }
@@ -1592,6 +1797,14 @@ class GeoJSONExporter:
         document.getElementById('metrics-none').addEventListener('click', function() {
             setAllOptions('metric-list', false);
         });
+        document.getElementById('stats-toggle').addEventListener('click', toggleStatsPane);
+        var logScaleCheckbox = document.getElementById('log-scale-enabled');
+        if (logScaleCheckbox) {
+            logScaleCheckbox.addEventListener('change', function() {
+                logScaleCheckbox.dataset.userSet = '1';
+                updateMap();
+            });
+        }
         document.getElementById('color-metric-select').addEventListener('change', updateMap);
         document.getElementById('color-enabled').addEventListener('change', updateMap);
         updateMap();
