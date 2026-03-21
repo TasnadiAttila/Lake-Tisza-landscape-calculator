@@ -1,9 +1,7 @@
 ﻿from abc import ABC
 from collections import deque
-from qgis.core import QgsCoordinateReferenceSystem
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
-from ..helper import check_interruption
-import processing
+from ..helper import check_interruption, reproject_layer_for_metrics
 
 
 class NumberOfPatches(IMetricsCalculator, ABC):
@@ -11,21 +9,10 @@ class NumberOfPatches(IMetricsCalculator, ABC):
 
     @staticmethod
     def calculate_metric(layer):
-        temp_layer = layer
-
-        if layer.crs().isGeographic():
-            projected_crs = QgsCoordinateReferenceSystem("EPSG:32634")
-            temp_layer = processing.run(
-                "gdal:warpreproject",
-                {
-                    'INPUT': layer,
-                    'TARGET_CRS': projected_crs,
-                    'RESAMPLING': 0,
-                    'OUTPUT': 'TEMPORARY_OUTPUT'
-                }
-            )['OUTPUT']
+        temp_layer = reproject_layer_for_metrics(layer)
 
         provider = temp_layer.dataProvider()
+        nodata = provider.sourceNoDataValue(1)
         extent = temp_layer.extent()
         width = temp_layer.width()
         height = temp_layer.height()
@@ -63,6 +50,8 @@ class NumberOfPatches(IMetricsCalculator, ABC):
                     continue
                 value = block.value(row, col)
                 if value is None or value == 0:
+                    continue
+                if nodata is not None and value == nodata:
                     continue
                 bfs(row, col, value)
                 if value not in class_patch_counts:

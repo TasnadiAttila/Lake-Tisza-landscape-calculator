@@ -1,6 +1,6 @@
 from abc import ABC
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
-from ..helper import check_interruption
+from ..helper import check_interruption, reproject_layer_for_metrics
 import numpy as np
 from scipy import ndimage
 
@@ -10,13 +10,16 @@ class PatchDensity(IMetricsCalculator, ABC):
 
     @staticmethod
     def calculate_metric(layer):
-        provider = layer.dataProvider()
-        pixel_size_x = layer.rasterUnitsPerPixelX()
-        pixel_size_y = layer.rasterUnitsPerPixelY()
+        temp_layer = reproject_layer_for_metrics(layer)
 
-        extent = layer.extent()
-        width = layer.width()
-        height = layer.height()
+        provider = temp_layer.dataProvider()
+        nodata = provider.sourceNoDataValue(1)
+        pixel_size_x = abs(temp_layer.rasterUnitsPerPixelX())
+        pixel_size_y = abs(temp_layer.rasterUnitsPerPixelY())
+
+        extent = temp_layer.extent()
+        width = temp_layer.width()
+        height = temp_layer.height()
 
         # Olvassuk be a rasztert
         block = provider.block(1, extent, width, height)
@@ -27,7 +30,7 @@ class PatchDensity(IMetricsCalculator, ABC):
                 check_interruption(yield_thread=True)
             for col in range(width):
                 val = block.value(row, col)
-                if val is None:
+                if val is None or (nodata is not None and val == nodata) or val == 0:
                     raster_array[row, col] = 0  # háttér
                 else:
                     raster_array[row, col] = int(val) + 1  # +1 hogy a háttér 0 maradjon
@@ -36,7 +39,7 @@ class PatchDensity(IMetricsCalculator, ABC):
         total_patches = 0
 
         # Terület négyzetméterben
-        total_area_m2 = width * pixel_size_x * height * pixel_size_y
+        total_area_m2 = (width * pixel_size_x) * (height * pixel_size_y)
         # Átváltás km²-re (1 km² = 1,000,000 m²)
         total_area_km2 = total_area_m2 / 1_000_000
 
@@ -46,7 +49,7 @@ class PatchDensity(IMetricsCalculator, ABC):
                 continue  # ne számoljuk a háttér patch-et
 
             binary_mask = (raster_array == val).astype(int)
-            labeled_array, num_features = ndimage.label(binary_mask)
+            labeled_array, num_features = ndimage.label(binary_mask, structure=np.ones((3, 3), dtype=int))
             total_patches += num_features
 
             patch_areas = []

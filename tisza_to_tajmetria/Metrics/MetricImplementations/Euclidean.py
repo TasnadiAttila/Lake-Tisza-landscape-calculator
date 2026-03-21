@@ -1,15 +1,13 @@
 ﻿from abc import ABC
-from qgis.core import QgsCoordinateReferenceSystem
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
-from ..helper import bfs_collect, check_interruption
-import processing
+from ..helper import bfs_collect, check_interruption, reproject_layer_for_metrics
 import math
 
 class Euclidean(IMetricsCalculator, ABC):
     """Average pairwise Euclidean distance between patch centroids (km).
 
     Steps:
-    - If the layer is geographic, reproject to EPSG:32634 (meters).
+    - If the layer is geographic, reproject to an appropriate UTM CRS (meters).
     - Identify contiguous patches per class and compute their centroids.
     - Compute all pairwise distances between patch centroids.
     - Return the mean distance in kilometers.
@@ -18,21 +16,10 @@ class Euclidean(IMetricsCalculator, ABC):
 
     @staticmethod
     def calculate_metric(layer):
-        temp_layer = layer
-
-        if layer.crs().isGeographic():
-            projected_crs = QgsCoordinateReferenceSystem("EPSG:32634")
-            temp_layer = processing.run(
-                "gdal:warpreproject",
-                {
-                    'INPUT': layer,
-                    'TARGET_CRS': projected_crs,
-                    'RESAMPLING': 0,
-                    'OUTPUT': 'TEMPORARY_OUTPUT'
-                }
-            )['OUTPUT']
+        temp_layer = reproject_layer_for_metrics(layer)
 
         provider = temp_layer.dataProvider()
+        nodata = provider.sourceNoDataValue(1)
         extent = temp_layer.extent()
         width = temp_layer.width()
         height = temp_layer.height()
@@ -65,6 +52,8 @@ class Euclidean(IMetricsCalculator, ABC):
                     continue
                 val = block.value(row, col)
                 if val is None or val == 0:
+                    continue
+                if nodata is not None and val == nodata:
                     continue
                 centroid = bfs_collect(row, col, val, context)
                 patch_centroids.append(centroid)

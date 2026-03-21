@@ -6,7 +6,7 @@ from qgis.core import (
     QgsProcessingFeedback,
     QgsProcessingContext
 )
-from ..helper import check_interruption
+from ..helper import check_interruption, reproject_layer_for_metrics
 import processing
 
 class LandscapeProportion(IMetricsCalculator, ABC):
@@ -19,16 +19,18 @@ class LandscapeProportion(IMetricsCalculator, ABC):
         if not isinstance(layer, QgsRasterLayer):
             raise TypeError("Input layer must be a raster layer")
 
+        temp_layer = reproject_layer_for_metrics(layer)
+
         feedback = QgsProcessingFeedback()
         context = QgsProcessingContext()
 
         polygon_output = processing.run(
             "gdal:polygonize",
             {
-                'INPUT': layer,
+                'INPUT': temp_layer,
                 'BAND': 1,
                 'FIELD': 'VALUE',
-                'EIGHT_CONNECTEDNESS': False,
+                'EIGHT_CONNECTEDNESS': True,
                 'OUTPUT': 'TEMPORARY_OUTPUT'
             },
             feedback=feedback,
@@ -39,7 +41,7 @@ class LandscapeProportion(IMetricsCalculator, ABC):
         if not polygon_layer.isValid():
             raise RuntimeError("Polygonized layer is invalid")
 
-        provider = layer.dataProvider()
+        provider = temp_layer.dataProvider()
         nodata = provider.sourceNoDataValue(1)
 
         total_patch_area = 0.0
@@ -58,8 +60,8 @@ class LandscapeProportion(IMetricsCalculator, ABC):
                 total_patch_area += geom.area()
 
 
-        pixel_area = layer.rasterUnitsPerPixelX() * layer.rasterUnitsPerPixelY()
-        raster_total_area = layer.width() * layer.height() * pixel_area
+        pixel_area = abs(temp_layer.rasterUnitsPerPixelX() * temp_layer.rasterUnitsPerPixelY())
+        raster_total_area = temp_layer.width() * temp_layer.height() * pixel_area
 
         if raster_total_area == 0:
             return 0.0

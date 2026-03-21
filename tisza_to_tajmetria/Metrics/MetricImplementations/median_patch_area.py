@@ -1,8 +1,6 @@
 ﻿from abc import ABC
-from ..helper import bfs, check_interruption
-from qgis.core import QgsCoordinateReferenceSystem, QgsProject
+from ..helper import bfs, check_interruption, reproject_layer_for_metrics
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
-import processing
 import statistics
 
 class MedianPatchArea(IMetricsCalculator, ABC):
@@ -10,21 +8,10 @@ class MedianPatchArea(IMetricsCalculator, ABC):
 
     @staticmethod
     def calculate_metric(layer):
-        temp_layer = layer
-
-        if layer.crs().isGeographic():
-            projected_crs = QgsCoordinateReferenceSystem("EPSG:32634")
-            temp_layer = processing.run(
-                "gdal:warpreproject",
-                {
-                    'INPUT': layer,
-                    'TARGET_CRS': projected_crs,
-                    'RESAMPLING': 0,
-                    'OUTPUT': 'TEMPORARY_OUTPUT'
-                }
-            )['OUTPUT']
+        temp_layer = reproject_layer_for_metrics(layer)
 
         provider = temp_layer.dataProvider()
+        nodata = provider.sourceNoDataValue(1)
         extent = temp_layer.extent()
         width = temp_layer.width()
         height = temp_layer.height()
@@ -32,7 +19,7 @@ class MedianPatchArea(IMetricsCalculator, ABC):
 
         pixel_width = extent.width() / width
         pixel_height = extent.height() / height
-        pixel_area = pixel_width * pixel_height
+        pixel_area = abs(pixel_width * pixel_height)
 
         visited = [[False for _ in range(width)] for _ in range(height)]
         class_patch_areas = {}
@@ -56,6 +43,8 @@ class MedianPatchArea(IMetricsCalculator, ABC):
                     continue
                 value = block.value(row, col)
                 if value is None or value == 0:
+                    continue
+                if nodata is not None and value == nodata:
                     continue
                 patch_pixel_count = bfs(row, col, value, context)
                 area = (patch_pixel_count * pixel_area) / 1e6

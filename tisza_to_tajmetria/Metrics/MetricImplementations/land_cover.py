@@ -11,6 +11,7 @@ class LandCover(IMetricsCalculator, ABC):
     @staticmethod
     def calculate_metric(layer):
         provider = layer.dataProvider()
+        nodata = provider.sourceNoDataValue(1)
 
         extent = layer.extent()
         width = layer.width()
@@ -28,10 +29,17 @@ class LandCover(IMetricsCalculator, ABC):
                 val = block.value(row, col)
                 if val is None:
                     continue
+                if nodata is not None and val == nodata:
+                    continue
+                if val == 0:
+                    continue
                 total_pixels += 1
                 if val not in class_counts:
                     class_counts[val] = 0
                 class_counts[val] += 1
+
+        if total_pixels == 0:
+            return {}
 
         land_cover_percentages = {}
         for cls, count in class_counts.items():

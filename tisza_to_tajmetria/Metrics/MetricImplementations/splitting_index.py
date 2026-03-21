@@ -1,6 +1,6 @@
 ﻿from abc import ABC
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
-from ..helper import check_interruption
+from ..helper import check_interruption, reproject_layer_for_metrics
 import numpy as np
 from scipy import ndimage
 
@@ -10,15 +10,18 @@ class SplittingIndex(IMetricsCalculator, ABC):
 
     @staticmethod
     def calculate_metric(layer):
-        provider = layer.dataProvider()
-        pixel_size_x = layer.rasterUnitsPerPixelX()
-        pixel_size_y = layer.rasterUnitsPerPixelY()
+        temp_layer = reproject_layer_for_metrics(layer)
 
-        width = layer.width()
-        height = layer.height()
+        provider = temp_layer.dataProvider()
+        nodata = provider.sourceNoDataValue(1)
+        pixel_size_x = abs(temp_layer.rasterUnitsPerPixelX())
+        pixel_size_y = abs(temp_layer.rasterUnitsPerPixelY())
+
+        width = temp_layer.width()
+        height = temp_layer.height()
 
         # Raszter beolvasása
-        block = provider.block(1, layer.extent(), width, height)
+        block = provider.block(1, temp_layer.extent(), width, height)
         raster_array = np.zeros((height, width), dtype=int)
 
         for row in range(height):
@@ -26,7 +29,7 @@ class SplittingIndex(IMetricsCalculator, ABC):
                 check_interruption(yield_thread=True)
             for col in range(width):
                 val = block.value(row, col)
-                if val is None or val == 0:
+                if val is None or val == 0 or (nodata is not None and val == nodata):
                     raster_array[row, col] = 0  # háttér
                 else:
                     raster_array[row, col] = int(val)
@@ -39,7 +42,7 @@ class SplittingIndex(IMetricsCalculator, ABC):
                 continue  # háttér kizárása
 
             binary_mask = (raster_array == val).astype(int)
-            labeled_array, num_features = ndimage.label(binary_mask)
+            labeled_array, num_features = ndimage.label(binary_mask, structure=np.ones((3, 3), dtype=int))
 
             patch_areas = []
             for i in range(1, num_features + 1):

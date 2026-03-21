@@ -1,8 +1,6 @@
 ﻿from abc import ABC
-from qgis.core import QgsCoordinateReferenceSystem
-import processing
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
-from ..helper import bfs, check_interruption
+from ..helper import bfs, check_interruption, reproject_layer_for_metrics
 
 class EffectiveMeshSize(IMetricsCalculator, ABC):
     """Calculate effective mesh size in square kilometers"""
@@ -10,19 +8,7 @@ class EffectiveMeshSize(IMetricsCalculator, ABC):
 
     @staticmethod
     def calculate_metric(layer):
-        temp_layer = layer
-
-        if layer.crs().isGeographic():
-            projected_crs = QgsCoordinateReferenceSystem("EPSG:32634")
-            temp_layer = processing.run(
-                "gdal:warpreproject",
-                {
-                    'INPUT': layer,
-                    'TARGET_CRS': projected_crs,
-                    'RESAMPLING': 0,
-                    'OUTPUT': 'TEMPORARY_OUTPUT'
-                }
-            )['OUTPUT']
+        temp_layer = reproject_layer_for_metrics(layer)
 
         provider = temp_layer.dataProvider()
         extent = temp_layer.extent()

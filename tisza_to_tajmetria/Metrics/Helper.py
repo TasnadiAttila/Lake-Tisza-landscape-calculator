@@ -2,6 +2,8 @@
 import time
 
 from PyQt5.QtCore import QThread
+from qgis.core import QgsCoordinateReferenceSystem
+import processing
 
 
 def check_interruption(yield_thread=False):
@@ -10,6 +12,34 @@ def check_interruption(yield_thread=False):
         raise InterruptedError("Calculation cancelled")
     if yield_thread:
         time.sleep(0)
+
+
+def _utm_epsg_for_lon_lat(lon, lat):
+    zone = int((lon + 180) // 6) + 1
+    zone = max(1, min(zone, 60))
+    return 32600 + zone if lat >= 0 else 32700 + zone
+
+
+def reproject_layer_for_metrics(layer):
+    """Return a projected layer in meters when input CRS is geographic."""
+    if not layer.crs().isGeographic():
+        return layer
+
+    extent = layer.extent()
+    lon = extent.center().x()
+    lat = extent.center().y()
+    target_epsg = _utm_epsg_for_lon_lat(lon, lat)
+    projected_crs = QgsCoordinateReferenceSystem(f"EPSG:{target_epsg}")
+
+    return processing.run(
+        "gdal:warpreproject",
+        {
+            'INPUT': layer,
+            'TARGET_CRS': projected_crs,
+            'RESAMPLING': 0,
+            'OUTPUT': 'TEMPORARY_OUTPUT'
+        }
+    )['OUTPUT']
 
 def bfs(start_row, start_col, class_value, context):
     block = context["block"]

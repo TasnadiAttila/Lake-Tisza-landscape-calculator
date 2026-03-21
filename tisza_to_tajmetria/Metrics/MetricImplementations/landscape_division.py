@@ -6,9 +6,8 @@ from qgis.core import (
     QgsProcessingFeedback,
     QgsProcessingContext
 )
-from ..helper import check_interruption
+from ..helper import check_interruption, reproject_layer_for_metrics
 import processing
-import os
 
 class LandscapeDivision(IMetricsCalculator, ABC):
     """Calculate the Landscape Division Index (LDI)"""
@@ -19,34 +18,30 @@ class LandscapeDivision(IMetricsCalculator, ABC):
         if not isinstance(layer, QgsRasterLayer):
             raise TypeError("Input layer must be a raster layer")
 
+        temp_layer = reproject_layer_for_metrics(layer)
+
         feedback = QgsProcessingFeedback()
         context = QgsProcessingContext()
 
-        temp_folder = os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp")
-        if not os.path.exists(temp_folder):
-            os.makedirs(temp_folder)
-
-        polygon_output = os.path.join(temp_folder, "temp_raster_to_polygon.gpkg")
-
         # 1. Raster -> Polygon
-        processing.run(
+        polygon_output = processing.run(
             "gdal:polygonize",
             {
-                'INPUT': layer.source(),
+                'INPUT': temp_layer,
                 'BAND': 1,
                 'FIELD': 'VALUE',
-                'EIGHT_CONNECTEDNESS': False,
-                'OUTPUT': polygon_output
+                'EIGHT_CONNECTEDNESS': True,
+                'OUTPUT': 'TEMPORARY_OUTPUT'
             },
             feedback=feedback,
             context=context
-        )
+        )['OUTPUT']
 
         polygon_layer = QgsVectorLayer(polygon_output, "temp_polygons", "ogr")
         if not polygon_layer.isValid():
             raise RuntimeError("Polygonized layer is invalid")
 
-        provider = layer.dataProvider()
+        provider = temp_layer.dataProvider()
         nodata = provider.sourceNoDataValue(1)
 
         total_area = 0.0

@@ -1,8 +1,6 @@
 ﻿from abc import ABC
-from ..helper import bfs_collect, check_interruption
-from qgis.core import QgsCoordinateReferenceSystem
+from ..helper import bfs_collect, check_interruption, reproject_layer_for_metrics
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
-import processing
 import math
 
 class NearestNeighbourDistance(IMetricsCalculator, ABC):
@@ -14,25 +12,14 @@ class NearestNeighbourDistance(IMetricsCalculator, ABC):
 
         For each land cover class a centroid is computed for every contiguous patch.
         The nearest neighbour (Euclidean) distance between patch centroids is
-        computed in the layer's projected CRS (EPSG:32634 if original is geographic).
+        computed in the layer's projected CRS (UTM if original is geographic).
         Distances are converted from meters to kilometers before averaging.
         Returns: dict[class_value] -> mean_nearest_distance_km
         """
-        temp_layer = layer
-
-        if layer.crs().isGeographic():
-            projected_crs = QgsCoordinateReferenceSystem("EPSG:32634")
-            temp_layer = processing.run(
-                "gdal:warpreproject",
-                {
-                    'INPUT': layer,
-                    'TARGET_CRS': projected_crs,
-                    'RESAMPLING': 0,
-                    'OUTPUT': 'TEMPORARY_OUTPUT'
-                }
-            )['OUTPUT']
+        temp_layer = reproject_layer_for_metrics(layer)
 
         provider = temp_layer.dataProvider()
+        nodata = provider.sourceNoDataValue(1)
         extent = temp_layer.extent()
         width = temp_layer.width()
         height = temp_layer.height()
@@ -65,6 +52,8 @@ class NearestNeighbourDistance(IMetricsCalculator, ABC):
                     continue
                 value = block.value(row, col)
                 if value is None or value == 0:
+                    continue
+                if nodata is not None and value == nodata:
                     continue
                 centroid = bfs_collect(row, col, value, context)
                 if value not in class_centroids:

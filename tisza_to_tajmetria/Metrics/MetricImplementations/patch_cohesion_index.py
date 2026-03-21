@@ -1,7 +1,7 @@
 from abc import ABC
-from qgis.core import QgsCoordinateReferenceSystem, QgsVectorLayer
+from qgis.core import QgsVectorLayer
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
-from ..helper import check_interruption
+from ..helper import check_interruption, reproject_layer_for_metrics
 import processing
 import math
 
@@ -10,19 +10,7 @@ class PatchCohesionIndex(IMetricsCalculator, ABC):
 
     @staticmethod
     def calculate_metric(layer):
-        temp_layer = layer
-
-        if layer.crs().isGeographic():
-            projected_crs = QgsCoordinateReferenceSystem("EPSG:32634")
-            temp_layer = processing.run(
-                "gdal:warpreproject",
-                {
-                    'INPUT': layer,
-                    'TARGET_CRS': projected_crs,
-                    'RESAMPLING': 0,
-                    'OUTPUT': 'TEMPORARY_OUTPUT'
-                }
-            )['OUTPUT']
+        temp_layer = reproject_layer_for_metrics(layer)
 
         vector_result = processing.run(
             "gdal:polygonize",
@@ -41,12 +29,17 @@ class PatchCohesionIndex(IMetricsCalculator, ABC):
         if not vector_layer.isValid():
             raise ValueError("Polygonize failed: vector layer is not valid")
 
+        nodata = temp_layer.dataProvider().sourceNoDataValue(1)
         class_patches = {}
 
         for feature_index, feature in enumerate(vector_layer.getFeatures()):
             if feature_index % 256 == 0:
                 check_interruption(yield_thread=True)
             cls = feature['class']
+            if nodata is not None and cls == nodata:
+                continue
+            if cls <= 0:
+                continue
             geom = feature.geometry()
             area = geom.area()      # m
             perimeter = geom.length()  # m
