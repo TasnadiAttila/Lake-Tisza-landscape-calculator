@@ -1,6 +1,8 @@
 ﻿from abc import ABC
+from qgis.core import QgsCoordinateReferenceSystem
+import processing
 from tisza_to_tajmetria.Metrics.i_metric_calculator import IMetricsCalculator
-from ..helper import check_interruption
+from ..helper import bfs, check_interruption
 
 class EffectiveMeshSize(IMetricsCalculator, ABC):
     """Calculate effective mesh size in square kilometers"""
@@ -8,25 +10,69 @@ class EffectiveMeshSize(IMetricsCalculator, ABC):
 
     @staticmethod
     def calculate_metric(layer):
-        provider = layer.dataProvider()
-        extent = layer.extent()
-        pixel_size_x = layer.rasterUnitsPerPixelX()
-        pixel_size_y = layer.rasterUnitsPerPixelY()
-        pixel_area = abs(pixel_size_x * pixel_size_y)
+        temp_layer = layer
 
-        stats = {}
-        block = provider.block(1, extent, layer.width(), layer.height())
-        for row in range(layer.height()):
+        if layer.crs().isGeographic():
+            projected_crs = QgsCoordinateReferenceSystem("EPSG:32634")
+            temp_layer = processing.run(
+                "gdal:warpreproject",
+                {
+                    'INPUT': layer,
+                    'TARGET_CRS': projected_crs,
+                    'RESAMPLING': 0,
+                    'OUTPUT': 'TEMPORARY_OUTPUT'
+                }
+            )['OUTPUT']
+
+        provider = temp_layer.dataProvider()
+        extent = temp_layer.extent()
+        width = temp_layer.width()
+        height = temp_layer.height()
+        block = provider.block(1, extent, width, height)
+
+        pixel_width = extent.width() / width
+        pixel_height = extent.height() / height
+        pixel_area = abs(pixel_width * pixel_height)
+
+        nodata = provider.sourceNoDataValue(1)
+        visited = [[False for _ in range(width)] for _ in range(height)]
+        directions = [(-1, -1), (-1, 0), (-1, 1),
+                      (0, -1),          (0, 1),
+                      (1, -1),  (1, 0),  (1, 1)]
+
+        context = {
+            "block": block,
+            "visited": visited,
+            "height": height,
+            "width": width,
+            "directions": directions
+        }
+
+        patch_areas = []
+
+        for row in range(height):
             if row % 32 == 0:
                 check_interruption(yield_thread=True)
-            for col in range(layer.width()):
+            for col in range(width):
+                if visited[row][col]:
+                    continue
                 val = block.value(row, col)
-                if val is not None:
-                    stats[val] = stats.get(val, 0) + 1
 
-        areas = [count * pixel_area for count in stats.values()]
-        total_area = sum(areas)
+                if val is None:
+                    continue
+                if nodata is not None and val == nodata:
+                    continue
+                if val == 0:
+                    continue
 
-        ems = sum([a ** 2 for a in areas]) / total_area
+                patch_pixel_count = bfs(row, col, val, context)
+                if patch_pixel_count > 0:
+                    patch_areas.append(patch_pixel_count * pixel_area)
+
+        total_area = sum(patch_areas)
+        if total_area == 0:
+            return 0.0
+
+        ems = sum(a ** 2 for a in patch_areas) / total_area
 
         return ems / 1_000_000
